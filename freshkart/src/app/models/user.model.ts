@@ -22,6 +22,7 @@ const userSchema = new mongoose.Schema<UserInterface>(
     mobile: {
       type: String,
       unique: true,
+      sparse: true
     },
     password: {
       type: String,
