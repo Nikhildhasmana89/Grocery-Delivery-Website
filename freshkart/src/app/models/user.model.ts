@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
 
-interface UserInterface {
+export interface UserInterface {
   name: string;
   email: string;
-  password: string;
+  password?: string; // Optional for OAuth (Google/GitHub) users
   mobile?: string;
   role: "user" | "deliveryBoy" | "admin";
 }
@@ -13,20 +13,24 @@ const userSchema = new mongoose.Schema<UserInterface>(
     name: {
       type: String,
       required: true,
+      trim: true,
     },
     email: {
       type: String,
       required: true,
       unique: true,
+      lowercase: true, 
+      trim: true,
     },
     mobile: {
       type: String,
       unique: true,
-      sparse: true
+      sparse: true, 
+      trim: true,
     },
     password: {
       type: String,
-      required: true,
+      required: false, 
     },
     role: {
       type: String,

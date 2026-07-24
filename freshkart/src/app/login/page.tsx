@@ -1,14 +1,13 @@
 'use client';
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import googleImage from "@/assets/google image.webp";
-import axios from "axios";
+import { signIn, useSession } from "next-auth/react"; // Fixed: Added useSession import
 
-// 1. Added optional prop type support for multi-step flows
 type PropType = {
   nextStep?: (s: number) => void;
   previousStep?: (s: number) => void;
@@ -24,7 +23,11 @@ export default function Login({ nextStep, previousStep }: PropType) {
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // 2. Safe Back Button Navigation
+  // NextAuth Session Hook
+  const { data: session } = useSession(); 
+  console.log("Session Data:", session);
+
+  // Safe Back Button Navigation
   const handleBack = () => {
     if (previousStep) {
       previousStep(1);
@@ -33,35 +36,47 @@ export default function Login({ nextStep, previousStep }: PropType) {
     }
   };
 
-  const handleLogin = async (e?: React.FormEvent) => {
+  // Secure Login Handler
+  const handleLogin = async (e?: FormEvent) => {
     if (e) e.preventDefault();
+
+    if (!email.trim() || !password) {
+      setErrorMessage("Please fill in both email and password.");
+      return;
+    }
 
     setErrorMessage("");
     setLoading(true);
 
     try {
-      const response = await axios.post('/api/auth/login', {
-        email,
+      const res = await signIn("credentials", {
+        email: email.trim(),
         password,
+        redirect: false,
       });
 
-      console.log("Login Successful:", response.data);
-
-      setIsLoggedIn(true);
-
-      // Redirect or advance step after 2s
-      setTimeout(() => {
-        if (nextStep) {
-          nextStep(2);
+      if (res?.error) {
+        // Translate NextAuth default error codes into readable user messages
+        if (res.error === "CredentialsSignin") {
+          setErrorMessage("Invalid email or password. Please try again.");
         } else {
-          router.push("/dashboard");
+          setErrorMessage(res.error);
         }
-      }, 2000);
+        setIsLoggedIn(false);
+      } else if (res?.ok) {
+        setIsLoggedIn(true);
 
+        // Redirect or advance step after 2s
+        setTimeout(() => {
+          if (nextStep) {
+            nextStep(2);
+          } else {
+            router.push("/dashboard");
+          }
+        }, 2000);
+      }
     } catch (error: any) {
-      const apiError =
-        error.response?.data?.message || "Invalid email or password. Please try again.";
-      setErrorMessage(apiError);
+      setErrorMessage("Something went wrong. Please try again later.");
       console.error("Login Error:", error);
     } finally {
       setLoading(false);
@@ -72,6 +87,47 @@ export default function Login({ nextStep, previousStep }: PropType) {
 
   return (
     <div className="min-h-screen w-full bg-[#07090E] p-4 text-white relative overflow-hidden flex flex-col items-center justify-center">
+      {/* Dynamic Animated Background Elements */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <motion.div
+          animate={{
+            x: [0, 80, -60, 0],
+            y: [0, -100, 50, 0],
+            scale: [1, 1.25, 0.9, 1],
+          }}
+          transition={{
+            duration: 18,
+            repeat: Infinity,
+            repeatType: "mirror",
+            ease: "easeInOut",
+          }}
+          className="absolute top-1/4 left-1/3 w-125 h-[500px] bg-emerald-500/20 rounded-full blur-[140px]"
+        />
+
+        <motion.div
+          animate={{
+            x: [0, -90, 70, 0],
+            y: [0, 80, -80, 0],
+            scale: [1, 0.85, 1.2, 1],
+          }}
+          transition={{
+            duration: 22,
+            repeat: Infinity,
+            repeatType: "mirror",
+            ease: "easeInOut",
+          }}
+          className="absolute bottom-1/4 right-1/3 w-[450px] h-[450px] bg-cyan-500/15 rounded-full blur-[140px]"
+        />
+
+        <div 
+          className="absolute inset-0 opacity-[0.03]" 
+          style={{
+            backgroundImage: `radial-gradient(circle, #ffffff 1px, transparent 1px)`,
+            backgroundSize: '24px 24px'
+          }}
+        />
+      </div>
+
       {/* Back Button */}
       <motion.button
         type="button"
@@ -96,9 +152,6 @@ export default function Login({ nextStep, previousStep }: PropType) {
         </svg>
         <span className="text-sm font-medium">Back</span>
       </motion.button>
-
-      {/* Ambient Background Glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-emerald-500/10 blur-[140px] rounded-full pointer-events-none" />
 
       {/* Main Form Card Container */}
       <motion.div
@@ -286,6 +339,7 @@ export default function Login({ nextStep, previousStep }: PropType) {
               {/* Google Sign In */}
               <button
                 type="button"
+                onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
                 className="w-full border border-slate-800 rounded-xl py-2 text-xs font-medium text-slate-300 hover:bg-slate-900 transition-all cursor-pointer flex items-center justify-center gap-2"
               >
                 <Image

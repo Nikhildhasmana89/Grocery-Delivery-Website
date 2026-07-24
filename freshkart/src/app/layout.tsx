@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import Provider from "@/Provider";
+
 
 
 export const metadata: Metadata = {
   title: "freshKart",
-  description:"10 min delivery application",
+  description: "10 min delivery application",
 };
 
 export default function RootLayout({
@@ -13,11 +15,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-    >
-      <body className="fixed inset-0 bg-black/70 z-50" >
-      
-      {children}</body>
+    <html lang="en">
+      <body className="min-h-screen bg-[#07090E] text-white antialiased">
+       <Provider>
+       {children} 
+       </Provider>
+      </body>
     </html>
   );
 }
