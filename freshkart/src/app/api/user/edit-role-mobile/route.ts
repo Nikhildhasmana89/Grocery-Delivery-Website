@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
-import connectDB from "../../../../lib/connectDB"
-import User from "../../../../models/User"
+import connectDB from "@/app/lib/db";
+import User from "@/app/models/user.model";
 
 export async function POST(req: NextRequest) {
     try {
         await connectDB()
 
-        // 1. Get authenticated session
-        const session = await auth()
+        // 1. Get authenticated session 
+        const session = await auth(req)
+
         if (!session?.user?.email) {
             return NextResponse.json(
-                { message: "Unauthorized" },
+                { message: "Unauthorized. Please log in." },
                 { status: 401 }
             )
         }
@@ -19,7 +20,14 @@ export async function POST(req: NextRequest) {
         // 2. Parse request body
         const { role, mobile } = await req.json()
 
-        // 3. Update user and return updated document ({ new: true })
+        if (!role || !mobile) {
+             return NextResponse.json(
+                { message: "Role and mobile number are required." },
+                { status: 400 }
+            )
+        }
+
+        // 3. Update user
         const user = await User.findOneAndUpdate(
             { email: session.user.email },
             { role, mobile },
@@ -28,16 +36,18 @@ export async function POST(req: NextRequest) {
 
         if (!user) {
             return NextResponse.json(
-                { message: "User not found" },
+                { message: "User not found in database." },
                 { status: 404 }
             )
         }
 
         return NextResponse.json(user, { status: 200 })
-    } catch (error) {
-        console.error("Error updating user:", error)
+    } catch (error: any) {
+        // Detailed server console logging to catch exact DB or Auth errors
+        console.error("Error in update-role-mobile API:", error.message || error)
+        
         return NextResponse.json(
-            { message: "Failed to update role and mobile number" },
+            { message: error.message || "Failed to update role and mobile number" },
             { status: 500 }
         )
     }

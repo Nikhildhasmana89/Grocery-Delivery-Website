@@ -6,7 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import googleImage from "@/assets/google image.webp";
-import { signIn, useSession } from "next-auth/react"; // Fixed: Added useSession import
+import { signIn, useSession } from "next-auth/react";
 
 type PropType = {
   nextStep?: (s: number) => void;
@@ -20,12 +20,12 @@ export default function Login({ nextStep, previousStep }: PropType) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   // NextAuth Session Hook
-  const { data: session } = useSession(); 
-  console.log("Session Data:", session);
+  const { data: session } = useSession();
 
   // Safe Back Button Navigation
   const handleBack = () => {
@@ -36,7 +36,20 @@ export default function Login({ nextStep, previousStep }: PropType) {
     }
   };
 
-  // Secure Login Handler
+  // Google Login Handler
+  const handleGoogleLogin = async () => {
+    try {
+      setGoogleLoading(true);
+      setErrorMessage("");
+      await signIn("google", { callbackUrl: "/" });
+    } catch (error) {
+      console.error("Google Sign-In Error:", error);
+      setErrorMessage("Failed to connect with Google.");
+      setGoogleLoading(false);
+    }
+  };
+
+  // Credentials Login Handler
   const handleLogin = async (e?: FormEvent) => {
     if (e) e.preventDefault();
 
@@ -56,7 +69,6 @@ export default function Login({ nextStep, previousStep }: PropType) {
       });
 
       if (res?.error) {
-        // Translate NextAuth default error codes into readable user messages
         if (res.error === "CredentialsSignin") {
           setErrorMessage("Invalid email or password. Please try again.");
         } else {
@@ -66,12 +78,11 @@ export default function Login({ nextStep, previousStep }: PropType) {
       } else if (res?.ok) {
         setIsLoggedIn(true);
 
-        // Redirect or advance step after 2s
         setTimeout(() => {
           if (nextStep) {
             nextStep(2);
           } else {
-            router.push("/dashboard");
+            router.push("/");
           }
         }, 2000);
       }
@@ -83,10 +94,10 @@ export default function Login({ nextStep, previousStep }: PropType) {
     }
   };
 
-  const isFormValid = email.trim() && password;
+  const isFormValid = Boolean(email.trim() && password);
 
   return (
-    <div className="min-h-screen w-full bg-[#07090E] p-4 text-white relative overflow-hidden flex flex-col items-center justify-center">
+    <div className="min-h-screen w-full bg-[#07090E] p-4 text-white relative overflow-hidden flex flex-col items-center justify-center font-sans">
       {/* Dynamic Animated Background Elements */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <motion.div
@@ -101,7 +112,7 @@ export default function Login({ nextStep, previousStep }: PropType) {
             repeatType: "mirror",
             ease: "easeInOut",
           }}
-          className="absolute top-1/4 left-1/3 w-125 h-[500px] bg-emerald-500/20 rounded-full blur-[140px]"
+          className="absolute top-1/4 left-1/3 w-[500px] h-[500px] bg-emerald-500/20 rounded-full blur-[140px]"
         />
 
         <motion.div
@@ -119,11 +130,11 @@ export default function Login({ nextStep, previousStep }: PropType) {
           className="absolute bottom-1/4 right-1/3 w-[450px] h-[450px] bg-cyan-500/15 rounded-full blur-[140px]"
         />
 
-        <div 
-          className="absolute inset-0 opacity-[0.03]" 
+        <div
+          className="absolute inset-0 opacity-[0.03]"
           style={{
             backgroundImage: `radial-gradient(circle, #ffffff 1px, transparent 1px)`,
-            backgroundSize: '24px 24px'
+            backgroundSize: "24px 24px",
           }}
         />
       </div>
@@ -198,7 +209,7 @@ export default function Login({ nextStep, previousStep }: PropType) {
               </h2>
 
               <p className="text-slate-400 text-xs max-w-xs leading-relaxed">
-                Login successful. Redirecting to your dashboard...
+                Login successful. Redirecting to home page...
               </p>
 
               {/* Progress Bar Indicator */}
@@ -249,7 +260,8 @@ export default function Login({ nextStep, previousStep }: PropType) {
                     placeholder="john@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-xl bg-slate-900/90 border border-slate-800 px-3.5 py-2.5 text-white placeholder-slate-600 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-xs"
+                    disabled={loading || googleLoading}
+                    className="w-full rounded-xl bg-slate-900/90 border border-slate-800 px-3.5 py-2.5 text-white placeholder-slate-600 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-xs disabled:opacity-50"
                   />
                 </div>
 
@@ -273,7 +285,8 @@ export default function Login({ nextStep, previousStep }: PropType) {
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full rounded-xl bg-slate-900/90 border border-slate-800 px-3.5 py-2.5 pr-12 text-white placeholder-slate-600 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-xs"
+                      disabled={loading || googleLoading}
+                      className="w-full rounded-xl bg-slate-900/90 border border-slate-800 px-3.5 py-2.5 pr-12 text-white placeholder-slate-600 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-xs disabled:opacity-50"
                     />
                     <button
                       type="button"
@@ -287,12 +300,12 @@ export default function Login({ nextStep, previousStep }: PropType) {
 
                 {/* Login Button */}
                 <motion.button
-                  whileHover={isFormValid && !loading ? { scale: 1.01 } : {}}
-                  whileTap={isFormValid && !loading ? { scale: 0.98 } : {}}
+                  whileHover={isFormValid && !loading && !googleLoading ? { scale: 1.01 } : {}}
+                  whileTap={isFormValid && !loading && !googleLoading ? { scale: 0.98 } : {}}
                   type="submit"
-                  disabled={!isFormValid || loading}
+                  disabled={!isFormValid || loading || googleLoading}
                   className={`w-full mt-2 bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 font-bold py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all text-xs flex items-center justify-center gap-2 ${
-                    isFormValid && !loading
+                    isFormValid && !loading && !googleLoading
                       ? "cursor-pointer opacity-100"
                       : "cursor-not-allowed opacity-50"
                   }`}
@@ -339,17 +352,47 @@ export default function Login({ nextStep, previousStep }: PropType) {
               {/* Google Sign In */}
               <button
                 type="button"
-                onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-                className="w-full border border-slate-800 rounded-xl py-2 text-xs font-medium text-slate-300 hover:bg-slate-900 transition-all cursor-pointer flex items-center justify-center gap-2"
+                onClick={handleGoogleLogin}
+                disabled={loading || googleLoading}
+                className={`w-full border border-slate-800 rounded-xl py-2 text-xs font-medium text-slate-300 hover:bg-slate-900 transition-all flex items-center justify-center gap-2 ${
+                  loading || googleLoading ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                }`}
               >
-                <Image
-                  src={googleImage}
-                  alt="Google Logo"
-                  width={16}
-                  height={16}
-                  className="w-4 h-4 object-contain"
-                />
-                <span>Continue with Google</span>
+                {googleLoading ? (
+                  <>
+                    <svg
+                      className="animate-spin h-4 w-4 text-emerald-400"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    <span>Connecting to Google...</span>
+                  </>
+                ) : (
+                  <>
+                    <Image
+                      src={googleImage}
+                      alt="Google Logo"
+                      width={16}
+                      height={16}
+                      className="w-4 h-4 object-contain"
+                    />
+                    <span>Continue with Google</span>
+                  </>
+                )}
               </button>
 
               {/* Redirect to Register Page */}

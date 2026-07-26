@@ -1,0 +1,28 @@
+import { auth } from "@/auth";
+import connectDB from "@/app/lib/db";
+import User from "@/app/models/user.model";
+import { redirect } from "next/navigation";
+import EditRoleMobile from "@/components/EditRoleMobile";
+
+export default async function EditProfilePage() {
+  await connectDB();
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    redirect("/login");
+  }
+
+  const user = await User.findById(session.user.id);
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  return (
+    <EditRoleMobile
+      initialRole={user.role || "user"}
+      initialMobile={user.mobile || ""}
+      userId={user._id.toString()}
+    />
+  );
+}
