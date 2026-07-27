@@ -4,6 +4,7 @@ declare module "next-auth" {
     email: string;
     name: string;
     role: string;
+    mobile?: string;
   }
 }
 

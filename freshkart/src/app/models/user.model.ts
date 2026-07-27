@@ -3,9 +3,10 @@ import mongoose from "mongoose";
 export interface UserInterface {
   name: string;
   email: string;
-  password?: string; // Optional for OAuth (Google/GitHub) users
+  password?: string;
   mobile?: string;
   role: "user" | "deliveryBoy" | "admin";
+  image?: string;
 }
 
 const userSchema = new mongoose.Schema<UserInterface>(
@@ -19,25 +20,29 @@ const userSchema = new mongoose.Schema<UserInterface>(
       type: String,
       required: true,
       unique: true,
-      lowercase: true, 
+      lowercase: true,
       trim: true,
     },
     mobile: {
-    type: String,
-    unique: true,
-    sparse: true, 
-  },
+      type: String,
+      unique: true,
+      sparse: true,
+    },
     password: {
       type: String,
-      required: false, 
+      required: false,
     },
     role: {
       type: String,
       enum: ["user", "deliveryBoy", "admin"],
       default: "user",
     },
+    image: {
+      type: String,
+      default: "",
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const User =

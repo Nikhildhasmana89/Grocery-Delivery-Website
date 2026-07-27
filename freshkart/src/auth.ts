@@ -95,15 +95,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return true;
     },
 
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.email = user.email;
-        token.name = user.name;
-        token.role = (user as any).role;
-      }
-      return token;
-    },
+    async jwt({ token, user, trigger, session }) {
+ 
+  if (user) {
+    token.id = user.id;
+    token.email = user.email;
+    token.name = user.name;
+    token.role = (user as any).role;
+    token.mobile = (user as any).mobile;
+  }
+
+  
+  if (trigger === "update" && session) {
+    if (session.role !== undefined) token.role = session.role;
+   
+  }
+
+  return token;
+},
 
     async session({ session, token }) {
       if (session.user) {

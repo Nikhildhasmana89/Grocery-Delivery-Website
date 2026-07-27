@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import axios from "axios";
 import {
   Phone,
@@ -14,9 +15,9 @@ import {
   User,
   Bike,
   ArrowLeft,
+  Home
 } from "lucide-react";
 
-// Define roles outside component to prevent re-creation on re-renders
 const ROLES = [
   { id: "admin", label: "Admin", icon: UserCog, desc: "Full access & management" },
   { id: "user", label: "User", icon: User, desc: "Standard app functionality" },
@@ -37,6 +38,7 @@ export default function EditRoleMobile({
   previousStep,
 }: PropType) {
   const router = useRouter();
+  const { update } = useSession();
 
   const [selectedRole, setSelectedRole] = useState(initialRole);
   const [mobile, setMobile] = useState(initialMobile);
@@ -44,20 +46,30 @@ export default function EditRoleMobile({
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // Navigation Handler
   const handleBack = () => {
     if (previousStep) {
       previousStep(1);
-    } else {
+    } else if (typeof window !== "undefined" && window.history.length > 1) {
       router.back();
+    } else {
+      router.push("/");
     }
+  };
+
+  const handleGoHomeDirect = () => {
+    router.push("/");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (mobile.trim() && !/^\d{10,15}$/.test(mobile.trim())) {
-      setStatus({ type: "error", message: "Please enter a valid mobile number (10-15 digits)." });
+    const cleanedMobile = mobile.replace(/\D/g, "");
+
+    if (!/^\d{10,15}$/.test(cleanedMobile)) {
+      setStatus({ 
+        type: "error", 
+        message: "Please enter a valid mobile number (10-15 digits)." 
+      });
       return;
     }
 
@@ -65,28 +77,36 @@ export default function EditRoleMobile({
     setLoading(true);
 
     try {
-      const response = await axios.post("/api/user/update-role-mobile", {
+      // 1. Update backend database
+      await axios.post("/api/user/edit-role-mobile", {
         userId,
         role: selectedRole,
-        mobile,
+        mobile: cleanedMobile,
       });
 
-      console.log("Profile updated:", response.data);
+      // 2. Trigger active client session update across NextAuth hooks
+      if (update) {
+        await update({ role: selectedRole, mobile: cleanedMobile });
+      }
+
+      // 3. Trigger App Router refresh to sync server components
+      router.refresh();
+
       setIsSuccess(true);
 
+      // 4. Redirect home after short success feedback delay
       setTimeout(() => {
-        if (previousStep) {
-          previousStep(1);
-        } else {
-          // Redirect to Home page instead of /dashboard
-          router.push("/");
-        }
-      }, 2500);
-    } catch (err: any) {
-      const apiError =
-        err.response?.data?.message || err.message || "Failed to update profile. Please try again.";
+        router.push("/");
+      }, 1000);
+
+    } catch (err: unknown) {
+      let apiError = "Failed to update profile. Please try again.";
+      if (axios.isAxiosError(err)) {
+        apiError = err.response?.data?.message || err.message || apiError;
+      } else if (err instanceof Error) {
+        apiError = err.message;
+      }
       setStatus({ type: "error", message: apiError });
-    } finally {
       setLoading(false);
     }
   };
@@ -95,7 +115,7 @@ export default function EditRoleMobile({
 
   return (
     <div className="min-h-screen w-full bg-[#07090E] p-4 text-white relative overflow-hidden flex flex-col items-center justify-center font-sans">
-      {/* Dynamic Animated Background Elements */}
+      {/* Background Glows */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <motion.div
           animate={{
@@ -103,74 +123,55 @@ export default function EditRoleMobile({
             y: [0, -100, 50, 0],
             scale: [1, 1.25, 0.9, 1],
           }}
-          transition={{
-            duration: 18,
-            repeat: Infinity,
-            repeatType: "mirror",
-            ease: "easeInOut",
-          }}
+          transition={{ duration: 18, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
           className="absolute top-1/4 left-1/3 w-[500px] h-[500px] bg-emerald-500/20 rounded-full blur-[140px]"
         />
-
         <motion.div
           animate={{
             x: [0, -90, 70, 0],
             y: [0, 80, -80, 0],
             scale: [1, 0.85, 1.2, 1],
           }}
-          transition={{
-            duration: 22,
-            repeat: Infinity,
-            repeatType: "mirror",
-            ease: "easeInOut",
-          }}
+          transition={{ duration: 22, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
           className="absolute bottom-1/4 right-1/3 w-[450px] h-[450px] bg-cyan-500/15 rounded-full blur-[140px]"
-        />
-
-        <motion.div
-          animate={{
-            scale: [1, 1.3, 1],
-            opacity: [0.3, 0.6, 0.3],
-          }}
-          transition={{
-            duration: 12,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-teal-600/10 rounded-full blur-[160px]"
-        />
-
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `radial-gradient(circle, #ffffff 1px, transparent 1px)`,
-            backgroundSize: "24px 24px",
-          }}
         />
       </div>
 
-      {/* Back Button */}
-      <motion.button
-        type="button"
-        onClick={handleBack}
-        whileHover={{ x: -4 }}
-        whileTap={{ scale: 0.95 }}
-        className="fixed top-5 left-5 z-30 flex items-center gap-2 rounded-full bg-slate-900/80 border border-slate-700/60 px-4 py-2 text-slate-200 backdrop-blur-md hover:bg-slate-800 transition-colors shadow-lg cursor-pointer text-sm font-medium"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        <span>Back</span>
-      </motion.button>
+      {/* Top Header Navigation */}
+      <div className="fixed top-5 left-5 z-30 flex items-center gap-2">
+        <motion.button
+          type="button"
+          onClick={handleBack}
+          whileHover={{ x: -2 }}
+          whileTap={{ scale: 0.95 }}
+          className="flex items-center gap-2 rounded-full bg-slate-900/80 border border-slate-700/60 px-4 py-2 text-slate-200 backdrop-blur-md hover:bg-slate-800 transition-colors shadow-lg cursor-pointer text-sm font-medium"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back</span>
+        </motion.button>
 
-      {/* Main Form Card Container */}
+        <motion.button
+          type="button"
+          onClick={handleGoHomeDirect}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="flex items-center gap-2 rounded-full bg-slate-900/80 border border-slate-700/60 p-2 text-slate-200 backdrop-blur-md hover:bg-slate-800 transition-colors shadow-lg cursor-pointer text-sm font-medium"
+          title="Go to Home"
+        >
+          <Home className="w-4 h-4" />
+        </motion.button>
+      </div>
+
+      {/* Main Form Container */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
-        className="relative z-10 w-full max-w-md max-h-[90vh] overflow-y-auto bg-slate-950/80 backdrop-blur-xl border border-emerald-500/30 rounded-3xl p-5 md:p-7 shadow-[0_0_50px_rgba(16,185,129,0.1)] scrollbar-none"
+        className="relative z-10 w-full max-w-md max-h-[90vh] overflow-y-auto bg-slate-950/80 backdrop-blur-xl border border-emerald-500/30 rounded-3xl p-5 md:p-7 shadow-[0_0_50px_rgba(16,185,129,0.1)] [scrollbar-width:none] [-ms-overflow-style:none]"
       >
         <AnimatePresence mode="wait">
           {isSuccess ? (
-            /* Success Screen Animation */
+            /* Success View */
             <motion.div
               key="success-screen"
               initial={{ opacity: 0 }}
@@ -186,11 +187,7 @@ export default function EditRoleMobile({
                     scale: [1, 1.2, 0.9],
                     opacity: [1, 1, 0],
                   }}
-                  transition={{
-                    duration: 1.2,
-                    ease: "easeOut",
-                    times: [0, 0.6, 1],
-                  }}
+                  transition={{ duration: 1.2, ease: "easeOut", times: [0, 0.6, 1] }}
                   className="absolute h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-400 flex items-center justify-center text-slate-950 shadow-lg shadow-emerald-500/30"
                 >
                   <UserCheck className="w-7 h-7 stroke-[2.5]" />
@@ -199,12 +196,7 @@ export default function EditRoleMobile({
                 <motion.div
                   initial={{ scale: 0, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  transition={{
-                    delay: 0.6,
-                    type: "spring",
-                    stiffness: 200,
-                    damping: 12,
-                  }}
+                  transition={{ delay: 0.6, type: "spring", stiffness: 200, damping: 12 }}
                   className="w-20 h-20 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center justify-center text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.3)]"
                 >
                   <CheckCircle2 className="w-10 h-10" />
@@ -221,14 +213,13 @@ export default function EditRoleMobile({
                   Updated Successfully!
                 </h2>
                 <p className="text-slate-400 text-xs">
-                  Applying account configuration changes...
+                  Redirecting to Home...
                 </p>
               </motion.div>
             </motion.div>
           ) : (
             /* Main Form View */
             <motion.div key="edit-form" className="space-y-5">
-              {/* Header */}
               <div className="text-center">
                 <motion.div
                   initial={{ scale: 0 }}
@@ -246,7 +237,6 @@ export default function EditRoleMobile({
                 </p>
               </div>
 
-              {/* Status Alert Toast */}
               <AnimatePresence mode="wait">
                 {status && (
                   <motion.div
@@ -270,7 +260,6 @@ export default function EditRoleMobile({
               </AnimatePresence>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Role Card Selection */}
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-300 uppercase tracking-wider mb-2">
                     Select Role
@@ -328,7 +317,6 @@ export default function EditRoleMobile({
                   </div>
                 </div>
 
-                {/* Mobile Input Field */}
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
                     Mobile Number
@@ -347,7 +335,6 @@ export default function EditRoleMobile({
                   </div>
                 </div>
 
-                {/* Submit Button */}
                 <motion.button
                   whileHover={isFormValid && !loading ? { scale: 1.01 } : {}}
                   whileTap={isFormValid && !loading ? { scale: 0.98 } : {}}
@@ -365,7 +352,7 @@ export default function EditRoleMobile({
                       <span>Saving Changes...</span>
                     </>
                   ) : (
-                    <span>Save Changes</span>
+                    <span>Save Changes & Go Home</span>
                   )}
                 </motion.button>
               </form>

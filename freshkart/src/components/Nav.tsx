@@ -1,7 +1,7 @@
 'use client';
 
 import Link from "next/link";
-import { Search, User as UserIcon, LogOut, Settings, ChevronDown, X } from "lucide-react";
+import { Search, User as UserIcon, LogOut, Settings, ChevronDown, X, ShoppingBag, PlusCircle, LayoutGrid, ClipboardList } from "lucide-react";
 import { signOut } from "next-auth/react";
 import mongoose from "mongoose";
 import { useState, useRef, useEffect } from "react";
@@ -21,6 +21,11 @@ export default function Nav({ user }: { user?: UserInterface }) {
   const [open, setOpen] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const profileDropDown = useRef<HTMLDivElement>(null);
+
+  // Role Checks: Default to standard user view if unauthenticated
+  const isUser = !user || user.role === "user";
+  const isAdmin = user?.role === "admin";
+  const isDeliveryBoy = user?.role === "deliveryBoy";
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -64,30 +69,61 @@ export default function Nav({ user }: { user?: UserInterface }) {
           </span>
         </Link>
 
-        {/* Desktop Search Input */}
-        <form className="hidden md:flex flex-1 max-w-md relative mx-4">
-          <div className="relative w-full flex items-center">
-            <Search className="w-4 h-4 absolute left-3.5 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search items..."
-              className="w-full bg-slate-900/90 border border-slate-800 text-white text-xs rounded-xl pl-10 pr-4 py-2.5 outline-none focus:border-emerald-500 transition-all placeholder:text-slate-500"
-            />
-          </div>
-        </form>
+        {/* 1. SEARCH BAR — ONLY VISIBLE TO USERS */}
+        {isUser && (
+          <form className="hidden md:flex flex-1 max-w-md relative mx-4">
+            <div className="relative w-full flex items-center">
+              <Search className="w-4 h-4 absolute left-3.5 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search items..."
+                className="w-full bg-slate-900/90 border border-slate-800 text-white text-xs rounded-xl pl-10 pr-4 py-2.5 outline-none focus:border-emerald-500 transition-all placeholder:text-slate-500"
+              />
+            </div>
+          </form>
+        )}
+
+        {/* 2. ADMIN NAVIGATION — ONLY VISIBLE TO ADMINS */}
+        {isAdmin && (
+          <nav className="hidden md:flex items-center gap-1 mx-4">
+            <Link
+              href="/admin/add-grocery"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all"
+            >
+              <PlusCircle className="w-4 h-4 text-emerald-400" />
+              Add Grocery
+            </Link>
+            <Link
+              href="/admin/view-grocery"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all"
+            >
+              <LayoutGrid className="w-4 h-4 text-emerald-400" />
+              View Grocery
+            </Link>
+            <Link
+              href="/admin/manage-orders"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all"
+            >
+              <ClipboardList className="w-4 h-4 text-emerald-400" />
+              Manage Orders
+            </Link>
+          </nav>
+        )}
 
         {/* Right Action Icons & User Menu */}
         <div className="flex items-center gap-2 md:gap-3 shrink-0">
           
-          {/* Mobile Search Toggle Button */}
-          <button
-            type="button"
-            onClick={() => setShowMobileSearch(true)}
-            className="md:hidden p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-emerald-400 transition-colors cursor-pointer"
-            aria-label="Open Search"
-          >
-            <Search className="w-4 h-4" />
-          </button>
+          {/* Mobile Search Toggle Button — ONLY VISIBLE TO USERS */}
+          {isUser && (
+            <button
+              type="button"
+              onClick={() => setShowMobileSearch(true)}
+              className="md:hidden p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-emerald-400 transition-colors cursor-pointer"
+              aria-label="Open Search"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          )}
 
           {/* User Account State */}
           {user ? (
@@ -98,7 +134,7 @@ export default function Nav({ user }: { user?: UserInterface }) {
                 onClick={() => setOpen((prev) => !prev)}
                 className="flex items-center gap-2.5 bg-slate-900 border border-slate-800 hover:border-emerald-500/50 p-1.5 md:px-3 md:py-1.5 rounded-xl transition-all cursor-pointer"
               >
-                {/* Avatar with Role Badge Badge */}
+                {/* Avatar with Role Badge */}
                 <div className="relative shrink-0">
                   <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center text-xs font-bold overflow-hidden">
                     {user.image ? (
@@ -136,8 +172,50 @@ export default function Nav({ user }: { user?: UserInterface }) {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -12, scale: 0.95 }}
                     transition={{ duration: 0.2, ease: "easeInOut" }}
-                    className="absolute right-0 mt-2 w-48 rounded-xl bg-slate-900 border border-slate-800 shadow-xl shadow-slate-950/50 p-2 z-50 flex flex-col gap-1"
+                    className="absolute right-0 mt-2 w-52 rounded-xl bg-slate-900 border border-slate-800 shadow-xl shadow-slate-950/50 p-2 z-50 flex flex-col gap-1"
                   >
+                    {/* MY ORDERS LINK — ONLY VISIBLE TO REGULAR USERS */}
+                    {isUser && (
+                      <Link
+                        href="/my-orders"
+                        onClick={() => setOpen(false)}
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                      >
+                        <ShoppingBag className="w-4 h-4 text-emerald-400" />
+                        My Orders
+                      </Link>
+                    )}
+
+                    {/* MOBILE ADMIN NAVIGATION LINKS (Shows inside dropdown on small screens) */}
+                    {isAdmin && (
+                      <div className="md:hidden border-b border-slate-800 pb-1 mb-1">
+                        <Link
+                          href="/admin/add-grocery"
+                          onClick={() => setOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                        >
+                          <PlusCircle className="w-4 h-4 text-emerald-400" />
+                          Add Grocery
+                        </Link>
+                        <Link
+                          href="/admin/view-grocery"
+                          onClick={() => setOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                        >
+                          <LayoutGrid className="w-4 h-4 text-emerald-400" />
+                          View Grocery
+                        </Link>
+                        <Link
+                          href="/admin/manage-orders"
+                          onClick={() => setOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                        >
+                          <ClipboardList className="w-4 h-4 text-emerald-400" />
+                          Manage Orders
+                        </Link>
+                      </div>
+                    )}
+
                     <Link
                       href="/edit-profile"
                       onClick={() => setOpen(false)}
@@ -169,36 +247,38 @@ export default function Nav({ user }: { user?: UserInterface }) {
           )}
         </div>
 
-        {/* Mobile Search Overlay Input */}
-        <AnimatePresence>
-          {showMobileSearch && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.15 }}
-              className="absolute inset-0 bg-slate-950 flex items-center gap-2 z-50 md:hidden"
-            >
-              <form className="flex-1 relative">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="Search items..."
-                  className="w-full bg-slate-900 border border-slate-800 text-white text-xs rounded-xl pl-10 pr-4 py-2.5 outline-none focus:border-emerald-500 placeholder:text-slate-500"
-                />
-              </form>
-              <button
-                type="button"
-                onClick={() => setShowMobileSearch(false)}
-                className="p-2 text-slate-400 hover:text-white cursor-pointer"
-                aria-label="Close Search"
+        {/* Mobile Search Overlay Input — ONLY VISIBLE TO USERS */}
+        {isUser && (
+          <AnimatePresence>
+            {showMobileSearch && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 bg-slate-950 flex items-center gap-2 z-50 md:hidden"
               >
-                <X className="w-5 h-5" />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                <form className="flex-1 relative">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Search items..."
+                    className="w-full bg-slate-900 border border-slate-800 text-white text-xs rounded-xl pl-10 pr-4 py-2.5 outline-none focus:border-emerald-500 placeholder:text-slate-500"
+                  />
+                </form>
+                <button
+                  type="button"
+                  onClick={() => setShowMobileSearch(false)}
+                  className="p-2 text-slate-400 hover:text-white cursor-pointer"
+                  aria-label="Close Search"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
 
       </div>
     </header>
