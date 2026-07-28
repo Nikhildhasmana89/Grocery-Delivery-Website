@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import axios from "axios";
 import {
-  Phone,
   UserCheck,
   Loader2,
   CheckCircle2,
@@ -15,33 +14,49 @@ import {
   User,
   Bike,
   ArrowLeft,
-  Home
+  ShieldCheck,
+  Sparkles,
+  ChevronRight
 } from "lucide-react";
 
 const ROLES = [
-  { id: "admin", label: "Admin", icon: UserCog, desc: "Full access & management" },
-  { id: "user", label: "User", icon: User, desc: "Standard app functionality" },
-  { id: "deliveryBoy", label: "Delivery Boy", icon: Bike, desc: "Order pickup & delivery" },
+  { 
+    id: "user", 
+    label: "User", 
+    icon: User, 
+    desc: "Browse products & place orders",
+    badge: "Standard"
+  },
+  { 
+    id: "deliveryBoy", 
+    label: "Delivery Partner", 
+    icon: Bike, 
+    desc: "Pick up & deliver orders nearby",
+    badge: "Active Orders" 
+  },
+  { 
+    id: "admin", 
+    label: "Administrator", 
+    icon: UserCog, 
+    desc: "Full management & analytics access",
+    badge: "Restricted" 
+  },
 ];
 
 type PropType = {
   initialRole?: string;
-  initialMobile?: string;
   userId?: string;
   previousStep?: (s: number) => void;
 };
 
 export default function EditRoleMobile({
   initialRole = "user",
-  initialMobile = "",
   userId,
   previousStep,
 }: PropType) {
   const router = useRouter();
   const { update } = useSession();
-
   const [selectedRole, setSelectedRole] = useState(initialRole);
-  const [mobile, setMobile] = useState(initialMobile);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -52,55 +67,41 @@ export default function EditRoleMobile({
     } else if (typeof window !== "undefined" && window.history.length > 1) {
       router.back();
     } else {
-      router.push("/");
+      router.push("/login");
     }
   };
 
-  const handleGoHomeDirect = () => {
-    router.push("/");
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+ const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const cleanedMobile = mobile.replace(/\D/g, "");
-
-    if (!/^\d{10,15}$/.test(cleanedMobile)) {
-      setStatus({ 
-        type: "error", 
-        message: "Please enter a valid mobile number (10-15 digits)." 
-      });
-      return;
-    }
-
     setStatus(null);
     setLoading(true);
 
     try {
-      // 1. Update backend database
-      await axios.post("/api/user/edit-role-mobile", {
+      const res = await axios.post("/api/user/edit-role-mobile", {
         userId,
         role: selectedRole,
-        mobile: cleanedMobile,
       });
 
-      // 2. Trigger active client session update across NextAuth hooks
+      // Update NextAuth session state synchronously
       if (update) {
-        await update({ role: selectedRole, mobile: cleanedMobile });
+        await update({ role: selectedRole, roleSelected: true });
       }
-
-      // 3. Trigger App Router refresh to sync server components
-      router.refresh();
 
       setIsSuccess(true);
 
-      // 4. Redirect home after short success feedback delay
+      // Perform fast redirect directly to load your component view
       setTimeout(() => {
-        router.push("/");
+        if (previousStep) {
+          // If parent passed a step-switcher callback
+          previousStep(1);
+        } else {
+          // Hard reload home route so parent component instantly renders <AdminDashboard />
+          window.location.href = "/";
+        }
       }, 1000);
 
     } catch (err: unknown) {
-      let apiError = "Failed to update profile. Please try again.";
+      let apiError = "Role selection failed. Please try again.";
       if (axios.isAxiosError(err)) {
         apiError = err.response?.data?.message || err.message || apiError;
       } else if (err instanceof Error) {
@@ -111,160 +112,167 @@ export default function EditRoleMobile({
     }
   };
 
-  const isFormValid = Boolean(mobile.trim());
-
   return (
-    <div className="min-h-screen w-full bg-[#07090E] p-4 text-white relative overflow-hidden flex flex-col items-center justify-center font-sans">
-      {/* Background Glows */}
+    <div className="min-h-screen w-full bg-[#05070C] p-4 text-white relative overflow-hidden flex flex-col items-center justify-center font-sans">
+      
+      {/* Dynamic Animated Ambient Background */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <motion.div
           animate={{
-            x: [0, 80, -60, 0],
-            y: [0, -100, 50, 0],
-            scale: [1, 1.25, 0.9, 1],
+            x: [0, 60, -40, 0],
+            y: [0, -80, 40, 0],
+            scale: [1, 1.2, 0.95, 1],
           }}
           transition={{ duration: 18, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
           className="absolute top-1/4 left-1/3 w-[500px] h-[500px] bg-emerald-500/20 rounded-full blur-[140px]"
         />
         <motion.div
           animate={{
-            x: [0, -90, 70, 0],
-            y: [0, 80, -80, 0],
-            scale: [1, 0.85, 1.2, 1],
+            x: [0, -70, 50, 0],
+            y: [0, 60, -60, 0],
+            scale: [1, 0.9, 1.15, 1],
           }}
           transition={{ duration: 22, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
           className="absolute bottom-1/4 right-1/3 w-[450px] h-[450px] bg-cyan-500/15 rounded-full blur-[140px]"
         />
+        <motion.div
+          animate={{ opacity: [0.3, 0.6, 0.3] }}
+          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-10 left-1/2 -translate-x-1/2 w-[600px] h-[250px] bg-emerald-400/10 rounded-full blur-[120px]"
+        />
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `radial-gradient(circle, #ffffff 1px, transparent 1px)`,
+            backgroundSize: "28px 28px",
+          }}
+        />
       </div>
 
-      {/* Top Header Navigation */}
-      <div className="fixed top-5 left-5 z-30 flex items-center gap-2">
+      {/* Glass Navigation Bar */}
+      <div className="fixed top-5 left-5 z-30">
         <motion.button
           type="button"
           onClick={handleBack}
-          whileHover={{ x: -2 }}
+          whileHover={{ x: -3, scale: 1.02 }}
           whileTap={{ scale: 0.95 }}
-          className="flex items-center gap-2 rounded-full bg-slate-900/80 border border-slate-700/60 px-4 py-2 text-slate-200 backdrop-blur-md hover:bg-slate-800 transition-colors shadow-lg cursor-pointer text-sm font-medium"
+          className="flex items-center gap-2.5 rounded-2xl bg-slate-900/80 border border-slate-800/80 px-4 py-2.5 text-slate-300 backdrop-blur-xl hover:bg-slate-800/80 hover:text-white transition-all shadow-xl cursor-pointer text-xs font-semibold tracking-wide"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 text-emerald-400" />
           <span>Back</span>
-        </motion.button>
-
-        <motion.button
-          type="button"
-          onClick={handleGoHomeDirect}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="flex items-center gap-2 rounded-full bg-slate-900/80 border border-slate-700/60 p-2 text-slate-200 backdrop-blur-md hover:bg-slate-800 transition-colors shadow-lg cursor-pointer text-sm font-medium"
-          title="Go to Home"
-        >
-          <Home className="w-4 h-4" />
         </motion.button>
       </div>
 
-      {/* Main Form Container */}
+      {/* Main Glass Card Container */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
-        className="relative z-10 w-full max-w-md max-h-[90vh] overflow-y-auto bg-slate-950/80 backdrop-blur-xl border border-emerald-500/30 rounded-3xl p-5 md:p-7 shadow-[0_0_50px_rgba(16,185,129,0.1)] [scrollbar-width:none] [-ms-overflow-style:none]"
+        initial={{ opacity: 0, y: 30, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="relative z-10 w-full max-w-md max-h-[92vh] overflow-y-auto bg-slate-950/80 backdrop-blur-2xl border border-emerald-500/25 rounded-3xl p-6 md:p-8 shadow-[0_0_60px_rgba(16,185,129,0.12)] [scrollbar-width:none] [-ms-overflow-style:none]"
       >
         <AnimatePresence mode="wait">
           {isSuccess ? (
-            /* Success View */
+            /* Success Completion Animation View */
             <motion.div
               key="success-screen"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="py-10 flex flex-col items-center justify-center text-center space-y-4"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="py-8 flex flex-col items-center justify-center text-center space-y-5"
             >
-              <div className="relative h-24 w-full flex justify-center items-center overflow-visible">
+              <div className="relative flex justify-center items-center">
                 <motion.div
-                  initial={{ y: 20, scale: 0.8, opacity: 0 }}
-                  animate={{
-                    y: [-10, -60, -90],
-                    scale: [1, 1.2, 0.9],
-                    opacity: [1, 1, 0],
-                  }}
-                  transition={{ duration: 1.2, ease: "easeOut", times: [0, 0.6, 1] }}
-                  className="absolute h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-400 flex items-center justify-center text-slate-950 shadow-lg shadow-emerald-500/30"
-                >
-                  <UserCheck className="w-7 h-7 stroke-[2.5]" />
-                </motion.div>
-
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+                  className="absolute w-28 h-28 rounded-full border-2 border-dashed border-emerald-500/30"
+                />
                 <motion.div
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.6, type: "spring", stiffness: 200, damping: 12 }}
-                  className="w-20 h-20 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center justify-center text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.3)]"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 220, damping: 15 }}
+                  className="w-20 h-20 bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 border border-emerald-500/40 rounded-full flex items-center justify-center text-emerald-400 shadow-[0_0_40px_rgba(16,185,129,0.35)]"
                 >
                   <CheckCircle2 className="w-10 h-10" />
                 </motion.div>
               </div>
 
               <motion.div
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.8, duration: 0.4 }}
-                className="space-y-1"
+                transition={{ delay: 0.2, duration: 0.4 }}
+                className="space-y-2"
               >
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold tracking-wide">
+                  <Sparkles className="w-3.5 h-3.5" /> Role Saved
+                </div>
                 <h2 className="text-2xl font-black text-white tracking-tight">
-                  Updated Successfully!
+                  Welcome Aboard!
                 </h2>
-                <p className="text-slate-400 text-xs">
-                  Redirecting to Home...
+                <p className="text-slate-400 text-xs max-w-xs mx-auto">
+                  Setting up your dashboard experience...
                 </p>
               </motion.div>
+
+              {/* Dynamic Redirect Progress Meter */}
+              <div className="w-48 h-1.5 bg-slate-900 rounded-full overflow-hidden mt-4 border border-slate-800">
+                <motion.div
+                  initial={{ width: "0%" }}
+                  animate={{ width: "100%" }}
+                  transition={{ duration: 1.2, ease: "easeInOut" }}
+                  className="h-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-emerald-400"
+                />
+              </div>
             </motion.div>
           ) : (
-            /* Main Form View */
-            <motion.div key="edit-form" className="space-y-5">
-              <div className="text-center">
+            /* Role Selection Form */
+            <motion.div key="edit-form" className="space-y-6">
+              
+              {/* Header */}
+              <div className="text-center space-y-2">
                 <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
                   transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                  className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-2xl flex items-center justify-center text-slate-950 mx-auto mb-3 shadow-lg shadow-emerald-500/20"
+                  className="w-13 h-13 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-2xl flex items-center justify-center text-slate-950 mx-auto shadow-lg shadow-emerald-500/25 p-3"
                 >
-                  <UserCheck className="w-6 h-6 stroke-[2.5]" />
+                  <ShieldCheck className="w-7 h-7 stroke-[2.2]" />
                 </motion.div>
                 <h1 className="text-2xl font-black text-white tracking-tight">
-                  Update Details
+                  Select Your Role
                 </h1>
-                <p className="text-xs text-slate-400 mt-1">
-                  Select your primary account role and contact phone number.
+                <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
+                  Choose how you will be using the application to continue.
                 </p>
               </div>
 
+              {/* Feedback Alert */}
               <AnimatePresence mode="wait">
                 {status && (
                   <motion.div
-                    initial={{ opacity: 0, y: -10, height: 0 }}
-                    animate={{ opacity: 1, y: 0, height: "auto" }}
-                    exit={{ opacity: 0, y: -10, height: 0 }}
-                    className={`flex items-center gap-2.5 p-3 rounded-xl text-xs font-medium border ${
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                    className={`flex items-start gap-3 p-3.5 rounded-2xl text-xs font-medium border ${
                       status.type === "success"
                         ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
                         : "bg-red-500/10 border-red-500/30 text-red-400"
                     }`}
                   >
                     {status.type === "success" ? (
-                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                     ) : (
-                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     )}
-                    <span>{status.message}</span>
+                    <span className="leading-snug">{status.message}</span>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                    Select Role
-                  </label>
-                  <div className="space-y-2">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                
+                {/* Role Selection Grid */}
+                <div className="space-y-2.5">
+                  <div className="space-y-2.5">
                     {ROLES.map((role) => {
                       const Icon = role.icon;
                       const isSelected = selectedRole === role.id;
@@ -272,44 +280,73 @@ export default function EditRoleMobile({
                       return (
                         <motion.div
                           key={role.id}
-                          whileHover={{ scale: 1.01 }}
+                          whileHover={{ scale: 1.01, x: 2 }}
                           whileTap={{ scale: 0.99 }}
                           onClick={() => setSelectedRole(role.id)}
-                          className={`relative cursor-pointer rounded-xl p-3 border transition-all flex items-center gap-3 ${
+                          className={`relative cursor-pointer rounded-2xl p-3.5 border transition-all duration-200 flex items-center gap-3.5 select-none ${
                             isSelected
-                              ? "bg-emerald-500/10 border-emerald-500/60 text-white"
-                              : "bg-slate-900/90 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                              ? "border-emerald-500/80 bg-emerald-500/10 text-white shadow-[0_0_20px_rgba(16,185,129,0.15)]"
+                              : "bg-slate-900/60 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:bg-slate-900/90 hover:text-slate-200"
                           }`}
                         >
+                          {/* Animated Active Selection Indicator */}
                           {isSelected && (
                             <motion.div
-                              layoutId="activeRoleGlow"
-                              className="absolute inset-0 bg-emerald-500/10 rounded-xl pointer-events-none"
-                              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                              layoutId="activeRoleIndicator"
+                              className="absolute inset-0 bg-gradient-to-r from-emerald-500/15 via-cyan-500/10 to-transparent rounded-2xl pointer-events-none border border-emerald-400/40"
+                              transition={{ type: "spring", stiffness: 350, damping: 30 }}
                             />
                           )}
 
+                          {/* Role Icon Container */}
                           <div
-                            className={`p-2 rounded-lg border ${
+                            className={`p-2.5 rounded-xl border transition-colors ${
                               isSelected
-                                ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                                ? "bg-gradient-to-br from-emerald-400 to-cyan-400 text-slate-950 border-emerald-300 shadow-md shadow-emerald-500/20"
                                 : "bg-slate-950 border-slate-800 text-slate-400"
                             }`}
                           >
-                            <Icon className="w-4 h-4" />
+                            <Icon className="w-5 h-5" />
                           </div>
 
-                          <div className="flex-1">
-                            <p className="text-xs font-semibold text-slate-100">{role.label}</p>
-                            <p className="text-[11px] text-slate-400">{role.desc}</p>
+                          {/* Role Text Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-bold text-slate-100 tracking-wide">
+                                {role.label}
+                              </p>
+                              {role.badge && (
+                                <span
+                                  className={`text-[9px] px-2 py-0.5 rounded-full font-medium border ${
+                                    isSelected
+                                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                      : "bg-slate-800/80 text-slate-400 border-slate-700"
+                                  }`}
+                                >
+                                  {role.badge}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                              {role.desc}
+                            </p>
                           </div>
 
+                          {/* Radio Check Circle */}
                           <div
-                            className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                              isSelected ? "border-emerald-400 bg-emerald-400" : "border-slate-700"
+                            className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
+                              isSelected
+                                ? "border-emerald-400 bg-emerald-400"
+                                : "border-slate-700 bg-slate-950"
                             }`}
                           >
-                            {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />}
+                            {isSelected && (
+                              <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="w-2 h-2 rounded-full bg-slate-950"
+                              />
+                            )}
                           </div>
                         </motion.div>
                       );
@@ -317,42 +354,28 @@ export default function EditRoleMobile({
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                    Mobile Number
-                  </label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                    <input
-                      type="tel"
-                      value={mobile}
-                      onChange={(e) => setMobile(e.target.value)}
-                      placeholder="+1 (555) 000-0000"
-                      disabled={loading}
-                      required
-                      className="w-full bg-slate-900/90 border border-slate-800 text-white text-xs rounded-xl pl-10 pr-3.5 py-2.5 focus:outline-none focus:border-emerald-500 transition-all placeholder:text-slate-600 disabled:opacity-50"
-                    />
-                  </div>
-                </div>
-
+                {/* Submit Action Button */}
                 <motion.button
-                  whileHover={isFormValid && !loading ? { scale: 1.01 } : {}}
-                  whileTap={isFormValid && !loading ? { scale: 0.98 } : {}}
-                  disabled={!isFormValid || loading}
+                  whileHover={!loading ? { scale: 1.01 } : {}}
+                  whileTap={!loading ? { scale: 0.98 } : {}}
+                  disabled={loading}
                   type="submit"
-                  className={`w-full mt-2 bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 font-bold py-2.5 rounded-xl shadow-lg transition-all text-xs flex items-center justify-center gap-2 ${
-                    isFormValid && !loading
-                      ? "cursor-pointer opacity-100"
+                  className={`w-full mt-3 bg-gradient-to-r from-emerald-400 via-cyan-400 to-emerald-400 text-slate-950 font-extrabold py-3.5 rounded-2xl shadow-lg shadow-emerald-500/20 transition-all text-xs flex items-center justify-center gap-2 ${
+                    !loading
+                      ? "cursor-pointer opacity-100 hover:shadow-emerald-500/30"
                       : "cursor-not-allowed opacity-50"
                   }`}
                 >
                   {loading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                      <span>Saving Changes...</span>
+                      <span>Saving Role...</span>
                     </>
                   ) : (
-                    <span>Save Changes & Go Home</span>
+                    <>
+                      <span>Confirm Role & Continue</span>
+                      <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                    </>
                   )}
                 </motion.button>
               </form>

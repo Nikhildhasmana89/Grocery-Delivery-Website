@@ -6,7 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import googleImage from "@/assets/google image.webp";
-import { signIn, useSession } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 
 type PropType = {
   nextStep?: (s: number) => void;
@@ -15,7 +15,6 @@ type PropType = {
 
 export default function Login({ nextStep, previousStep }: PropType) {
   const router = useRouter();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -24,10 +23,22 @@ export default function Login({ nextStep, previousStep }: PropType) {
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // NextAuth Session Hook
-  const { data: session } = useSession();
+  // Helper function to resolve target route based on user state
+  const getRedirectPath = (roleSelected?: boolean, role?: string) => {
+    if (!roleSelected || !role) {
+      return "/edit-profile";
+    }
+    switch (role) {
+      case "admin":
+        return "/admin";
+      case "deliveryBoy":
+        return "/delivery";
+      case "user":
+      default:
+        return "/";
+    }
+  };
 
-  // Safe Back Button Navigation
   const handleBack = () => {
     if (previousStep) {
       previousStep(1);
@@ -41,7 +52,8 @@ export default function Login({ nextStep, previousStep }: PropType) {
     try {
       setGoogleLoading(true);
       setErrorMessage("");
-      await signIn("google", { callbackUrl: "/" });
+      // Initiates Google OAuth; Middleware will catch unconfigured accounts and route to /edit-profile
+      await signIn("google");
     } catch (error) {
       console.error("Google Sign-In Error:", error);
       setErrorMessage("Failed to connect with Google.");
@@ -52,12 +64,10 @@ export default function Login({ nextStep, previousStep }: PropType) {
   // Credentials Login Handler
   const handleLogin = async (e?: FormEvent) => {
     if (e) e.preventDefault();
-
     if (!email.trim() || !password) {
       setErrorMessage("Please fill in both email and password.");
       return;
     }
-
     setErrorMessage("");
     setLoading(true);
 
@@ -78,13 +88,15 @@ export default function Login({ nextStep, previousStep }: PropType) {
       } else if (res?.ok) {
         setIsLoggedIn(true);
 
+        // Fetch fresh session token details
+        const updatedSession = await getSession();
+        const user = updatedSession?.user as any;
+        const targetPath = getRedirectPath(user?.roleSelected, user?.role);
+
         setTimeout(() => {
-          if (nextStep) {
-            nextStep(2);
-          } else {
-            router.push("/");
-          }
-        }, 2000);
+          router.replace(targetPath);
+          router.refresh();
+        }, 1200);
       }
     } catch (error: any) {
       setErrorMessage("Something went wrong. Please try again later.");
@@ -98,7 +110,6 @@ export default function Login({ nextStep, previousStep }: PropType) {
 
   return (
     <div className="min-h-screen w-full bg-[#07090E] p-4 text-white relative overflow-hidden flex flex-col items-center justify-center font-sans">
-      {/* Dynamic Animated Background Elements */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <motion.div
           animate={{
@@ -114,7 +125,6 @@ export default function Login({ nextStep, previousStep }: PropType) {
           }}
           className="absolute top-1/4 left-1/3 w-[500px] h-[500px] bg-emerald-500/20 rounded-full blur-[140px]"
         />
-
         <motion.div
           animate={{
             x: [0, -90, 70, 0],
@@ -129,7 +139,6 @@ export default function Login({ nextStep, previousStep }: PropType) {
           }}
           className="absolute bottom-1/4 right-1/3 w-[450px] h-[450px] bg-cyan-500/15 rounded-full blur-[140px]"
         />
-
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
@@ -139,7 +148,6 @@ export default function Login({ nextStep, previousStep }: PropType) {
         />
       </div>
 
-      {/* Back Button */}
       <motion.button
         type="button"
         onClick={handleBack}
@@ -164,16 +172,14 @@ export default function Login({ nextStep, previousStep }: PropType) {
         <span className="text-sm font-medium">Back</span>
       </motion.button>
 
-      {/* Main Form Card Container */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
-        className="relative z-10 w-full max-w-md max-h-[90vh] overflow-y-auto bg-slate-950/80 backdrop-blur-xl border border-emerald-500/30 rounded-3xl p-5 md:p-7 shadow-[0_0_50px_rgba(16,185,129,0.1)] scrollbar-none"
+        className="relative z-10 w-full max-w-md max-h-[90vh] overflow-y-auto bg-slate-950/80 backdrop-blur-xl border border-emerald-500/30 rounded-3xl p-5 md:p-7 shadow-[0_0_50px_rgba(16,185,129,0.1)] [scrollbar-width:none] [-ms-overflow-style:none]"
       >
         <AnimatePresence mode="wait">
           {isLoggedIn ? (
-            /* Success State Screen */
             <motion.div
               key="success-login"
               initial={{ opacity: 0, scale: 0.9 }}
@@ -181,7 +187,6 @@ export default function Login({ nextStep, previousStep }: PropType) {
               exit={{ opacity: 0, scale: 0.9 }}
               className="py-10 flex flex-col items-center justify-center text-center space-y-4"
             >
-              {/* Checkmark Icon */}
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
@@ -203,53 +208,42 @@ export default function Login({ nextStep, previousStep }: PropType) {
                   ></path>
                 </svg>
               </motion.div>
-
               <h2 className="text-2xl font-black text-white tracking-tight">
                 Welcome Back!
               </h2>
-
               <p className="text-slate-400 text-xs max-w-xs leading-relaxed">
-                Login successful. Redirecting to home page...
+                Login successful. Redirecting to your dashboard...
               </p>
-
-              {/* Progress Bar Indicator */}
               <div className="w-36 h-1.5 bg-slate-800 rounded-full overflow-hidden mt-4">
                 <motion.div
                   initial={{ width: "0%" }}
                   animate={{ width: "100%" }}
-                  transition={{ duration: 2, ease: "linear" }}
+                  transition={{ duration: 1.2, ease: "linear" }}
                   className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400"
                 />
               </div>
             </motion.div>
           ) : (
-            /* Login Form View */
             <motion.div key="login-form">
-              {/* Logo */}
               <div className="flex justify-center mb-3">
                 <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-400 flex items-center justify-center text-slate-950 text-xl font-black shadow-lg shadow-emerald-500/20">
                   🛒
                 </div>
               </div>
-
               <h1 className="text-2xl font-black text-center text-white tracking-tight">
                 Welcome Back
               </h1>
-
               <p className="text-center text-slate-400 text-xs mt-1 mb-5">
-                Sign in to continue shopping on FreshKart.
+                Sign in to continue on FreshKart.
               </p>
 
-              {/* Error Alert Display */}
               {errorMessage && (
                 <div className="mb-4 p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs text-center font-medium">
                   {errorMessage}
                 </div>
               )}
 
-              {/* Form */}
               <form onSubmit={handleLogin} className="space-y-3.5">
-                {/* Email Field */}
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
                     Email Address
@@ -265,18 +259,11 @@ export default function Login({ nextStep, previousStep }: PropType) {
                   />
                 </div>
 
-                {/* Password Field */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-[10px] font-semibold text-slate-300 uppercase tracking-wider">
                       Password
                     </label>
-                    <a
-                      href="#"
-                      className="text-[10px] text-emerald-400 hover:underline font-medium"
-                    >
-                      Forgot?
-                    </a>
                   </div>
                   <div className="relative">
                     <input
@@ -298,7 +285,6 @@ export default function Login({ nextStep, previousStep }: PropType) {
                   </div>
                 </div>
 
-                {/* Login Button */}
                 <motion.button
                   whileHover={isFormValid && !loading && !googleLoading ? { scale: 1.01 } : {}}
                   whileTap={isFormValid && !loading && !googleLoading ? { scale: 0.98 } : {}}
@@ -310,37 +296,10 @@ export default function Login({ nextStep, previousStep }: PropType) {
                       : "cursor-not-allowed opacity-50"
                   }`}
                 >
-                  {loading ? (
-                    <>
-                      <svg
-                        className="animate-spin h-4 w-4 text-slate-950"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        />
-                      </svg>
-                      <span>Signing In...</span>
-                    </>
-                  ) : (
-                    "Sign In"
-                  )}
+                  {loading ? "Signing In..." : "Sign In"}
                 </motion.button>
               </form>
 
-              {/* Divider */}
               <div className="flex items-center my-4">
                 <div className="flex-1 border-t border-slate-800"></div>
                 <span className="mx-3 text-slate-500 text-[10px] font-semibold">
@@ -349,7 +308,6 @@ export default function Login({ nextStep, previousStep }: PropType) {
                 <div className="flex-1 border-t border-slate-800"></div>
               </div>
 
-              {/* Google Sign In */}
               <button
                 type="button"
                 onClick={handleGoogleLogin}
@@ -359,28 +317,7 @@ export default function Login({ nextStep, previousStep }: PropType) {
                 }`}
               >
                 {googleLoading ? (
-                  <>
-                    <svg
-                      className="animate-spin h-4 w-4 text-emerald-400"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="none"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    <span>Connecting to Google...</span>
-                  </>
+                  <span>Connecting to Google...</span>
                 ) : (
                   <>
                     <Image
@@ -395,25 +332,14 @@ export default function Login({ nextStep, previousStep }: PropType) {
                 )}
               </button>
 
-              {/* Redirect to Register Page */}
               <p className="text-center text-slate-400 text-xs mt-4">
                 Don&apos;t have an account?{" "}
-                {nextStep ? (
-                  <button
-                    type="button"
-                    onClick={() => nextStep(2)}
-                    className="text-emerald-400 font-semibold hover:underline cursor-pointer"
-                  >
-                    Create one
-                  </button>
-                ) : (
-                  <Link
-                    href="/register"
-                    className="text-emerald-400 font-semibold hover:underline cursor-pointer"
-                  >
-                    Create one
-                  </Link>
-                )}
+                <Link
+                  href="/register"
+                  className="text-emerald-400 font-semibold hover:underline cursor-pointer"
+                >
+                  Create one
+                </Link>
               </p>
             </motion.div>
           )}

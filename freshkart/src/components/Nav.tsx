@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Search, User as UserIcon, LogOut, Settings, ChevronDown, X, ShoppingBag, PlusCircle, LayoutGrid, ClipboardList } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation"; // 1. Added useRouter
 import mongoose from "mongoose";
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,18 +15,22 @@ export interface UserInterface {
   password?: string;
   mobile?: string;
   role: "user" | "deliveryBoy" | "admin";
+  roleSelected?: boolean;
   image?: string;
 }
 
-export default function Nav({ user }: { user?: UserInterface }) {
+export default function Nav({ user: initialUser }: { user?: UserInterface }) {
   const [open, setOpen] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false); 
   const profileDropDown = useRef<HTMLDivElement>(null);
+  
+  const router = useRouter();
+  const { data: session } = useSession();
+  const user = (session?.user as UserInterface) || initialUser;
 
-  // Role Checks: Default to standard user view if unauthenticated
   const isUser = !user || user.role === "user";
   const isAdmin = user?.role === "admin";
-  const isDeliveryBoy = user?.role === "deliveryBoy";
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -33,12 +38,22 @@ export default function Nav({ user }: { user?: UserInterface }) {
         setOpen(false);
       }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Helper to map role to short letter badge and styling
+  // 3. Robust async sign-out handler
+  // Sign out function
+const handleSignOut = async () => {
+  setOpen(false);
+  
+  // triggers NextAuth API signout and redirects to /register
+  await signOut({ 
+    callbackUrl: "/register",
+    redirect: true 
+  });
+};
+
   const getRoleBadge = (role?: string) => {
     switch (role) {
       case "admin":
@@ -69,7 +84,7 @@ export default function Nav({ user }: { user?: UserInterface }) {
           </span>
         </Link>
 
-        {/* 1. SEARCH BAR — ONLY VISIBLE TO USERS */}
+        {/* 1. SEARCH BAR — ONLY VISIBLE TO STANDARD USERS */}
         {isUser && (
           <form className="hidden md:flex flex-1 max-w-md relative mx-4">
             <div className="relative w-full flex items-center">
@@ -128,13 +143,11 @@ export default function Nav({ user }: { user?: UserInterface }) {
           {/* User Account State */}
           {user ? (
             <div className="relative" ref={profileDropDown}>
-              {/* Profile Toggle Button */}
               <button
                 type="button"
                 onClick={() => setOpen((prev) => !prev)}
                 className="flex items-center gap-2.5 bg-slate-900 border border-slate-800 hover:border-emerald-500/50 p-1.5 md:px-3 md:py-1.5 rounded-xl transition-all cursor-pointer"
               >
-                {/* Avatar with Role Badge */}
                 <div className="relative shrink-0">
                   <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center text-xs font-bold overflow-hidden">
                     {user.image ? (
@@ -145,8 +158,6 @@ export default function Nav({ user }: { user?: UserInterface }) {
                       <UserIcon className="w-3.5 h-3.5" />
                     )}
                   </div>
-
-                  {/* Top Right Role Indicator Badge */}
                   <span
                     title={roleBadge.title}
                     className={`absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full ${roleBadge.bg} ${roleBadge.text} text-[9px] font-black flex items-center justify-center border-2 border-slate-950 shadow-md ring-1 ring-slate-800`}
@@ -154,17 +165,13 @@ export default function Nav({ user }: { user?: UserInterface }) {
                     {roleBadge.label}
                   </span>
                 </div>
-
-                {/* Visible on Desktop */}
                 <div className="hidden sm:block text-left">
                   <p className="text-xs font-semibold text-slate-200 line-clamp-1">{user.name}</p>
                   <p className="text-[10px] text-emerald-400 font-medium capitalize">{user.role}</p>
                 </div>
-
                 <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
               </button>
 
-              {/* Animated Slide-Down Dropdown Menu */}
               <AnimatePresence>
                 {open && (
                   <motion.div
@@ -174,7 +181,6 @@ export default function Nav({ user }: { user?: UserInterface }) {
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                     className="absolute right-0 mt-2 w-52 rounded-xl bg-slate-900 border border-slate-800 shadow-xl shadow-slate-950/50 p-2 z-50 flex flex-col gap-1"
                   >
-                    {/* MY ORDERS LINK — ONLY VISIBLE TO REGULAR USERS */}
                     {isUser && (
                       <Link
                         href="/my-orders"
@@ -186,7 +192,6 @@ export default function Nav({ user }: { user?: UserInterface }) {
                       </Link>
                     )}
 
-                    {/* MOBILE ADMIN NAVIGATION LINKS (Shows inside dropdown on small screens) */}
                     {isAdmin && (
                       <div className="md:hidden border-b border-slate-800 pb-1 mb-1">
                         <Link
@@ -222,16 +227,18 @@ export default function Nav({ user }: { user?: UserInterface }) {
                       className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
                     >
                       <Settings className="w-4 h-4 text-emerald-400" />
-                      Edit Profile
+                      Edit Profile / Role
                     </Link>
 
+                    {/* UPDATED SIGN OUT BUTTON */}
                     <button
                       type="button"
-                      onClick={() => signOut({ callbackUrl: "/login" })}
-                      className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 transition-colors w-full text-left cursor-pointer"
+                      disabled={isSigningOut}
+                      onClick={handleSignOut}
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 transition-colors w-full text-left cursor-pointer disabled:opacity-50"
                     >
                       <LogOut className="w-4 h-4" />
-                      Sign Out
+                      {isSigningOut ? "Signing out..." : "Sign Out"}
                     </button>
                   </motion.div>
                 )}
@@ -247,7 +254,7 @@ export default function Nav({ user }: { user?: UserInterface }) {
           )}
         </div>
 
-        {/* Mobile Search Overlay Input — ONLY VISIBLE TO USERS */}
+        {/* Mobile Search Overlay Input */}
         {isUser && (
           <AnimatePresence>
             {showMobileSearch && (
@@ -279,7 +286,6 @@ export default function Nav({ user }: { user?: UserInterface }) {
             )}
           </AnimatePresence>
         )}
-
       </div>
     </header>
   );

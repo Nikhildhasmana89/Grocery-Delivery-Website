@@ -41,6 +41,11 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Allow users on the role selection route to proceed
+  if (pathname === "/edit-role-mobile") {
+    return NextResponse.next();
+  }
+
   // 4. Case-Insensitive Role Guard Checks
   const userRole = typeof token.role === "string" ? token.role.trim().toLowerCase() : "";
 
@@ -58,6 +63,9 @@ export async function proxy(req: NextRequest) {
 
   return NextResponse.next();
 }
+
+// ⚠️ Next.js App Router entry point delegating to your proxy function
+export default proxy;
 
 export const config = {
   matcher: [
