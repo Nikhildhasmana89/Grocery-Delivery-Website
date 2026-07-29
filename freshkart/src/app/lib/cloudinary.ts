@@ -1,11 +1,25 @@
-import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
+import { v2 as cloudinary } from 'cloudinary';
+import type { UploadApiResponse } from 'cloudinary';
 
-// Configure Cloudinary credentials
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+// Configure helper to ensure credentials are injected dynamically
+const ensureCloudinaryConfig = () => {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+  if (!cloudName || !apiKey || !apiSecret) {
+    throw new Error(
+      'Cloudinary configuration missing! Ensure CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET are set in .env.local'
+    );
+  }
+
+  cloudinary.config({
+    cloud_name: cloudName,
+    api_key: apiKey,
+    api_secret: apiSecret,
+    secure: true,
+  });
+};
 
 /**
  * Uploads a file (Buffer, Blob, File, or Base64 String) to Cloudinary.
@@ -21,6 +35,9 @@ const uploadOnCloudinary = async (
   }
 
   try {
+    // Ensure config is loaded right before upload execution
+    ensureCloudinaryConfig();
+
     // 1. If input is a Base64 string or image URL
     if (typeof file === 'string') {
       const result = await cloudinary.uploader.upload(file, {

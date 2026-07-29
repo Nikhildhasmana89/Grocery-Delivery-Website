@@ -2,17 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/app/lib/db";
 import uploadOnCloudinary from "@/app/lib/cloudinary";
 import Grocery from "@/app/models/grocery.model";
-import { getServerSession } from "next-auth";          
-import { authOptions } from "@/auth"; 
-
+import { auth } from "@/auth"; 
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
-    // Fetch the actual user session
-    const session = await getServerSession(authOptions);
+    // 1. Authenticate session & admin role
+    const session = await auth();
 
-    if (session?.user?.role !== "admin") {
+    if (!session?.user || session?.user?.role !== "admin") {
       return NextResponse.json(
         { message: "Unauthorized: You are not an admin" },
         { status: 403 }
@@ -25,32 +23,46 @@ export async function POST(req: NextRequest) {
     const category = formData.get("category") as string;
     const unit = formData.get("unit") as string;
     const price = formData.get("price") as string;
-    const file = formData.get("file") as Blob | null;
+    
+    // 2. Fixed key lookup: check both 'image' and 'file' for safety
+    const file = (formData.get("image") || formData.get("file")) as File | null;
 
-    // Basic field validation
-    if (!name || !price || !category) {
+    // 3. Basic field validation
+    if (!name || !price || !category || !unit || !file) {
       return NextResponse.json(
-        { message: "Name, price, and category are required" },
+        { message: "All fields (name, price, category, unit, image) are required." },
         { status: 400 }
       );
     }
 
+    // 4. Upload image to Cloudinary
     let imageUrl: string | null = null;
-
     if (file && file.size > 0) {
-      imageUrl = await uploadOnCloudinary(file);
+      imageUrl = await uploadOnCloudinary(file, "freshkart");
     }
 
+    if (!imageUrl) {
+      return NextResponse.json(
+        { message: "Failed to upload image to Cloudinary" },
+        { status: 500 }
+      );
+    }
+
+    // 5. Save to database matching the schema types
     const grocery = await Grocery.create({
       name,
-      price: Number(price), 
+      price: price.toString(), // Kept as string to match your Mongoose Schema
       category,
       unit,
-      image: imageUrl,      
+      image: imageUrl,
     });
 
     return NextResponse.json(
-      { message: "Grocery item created successfully", grocery },
+      {
+        message: "Image successfully uploaded to Cloudinary & Grocery item created!",
+        imageUrl,
+        grocery,
+      },
       { status: 201 }
     );
   } catch (error: any) {
