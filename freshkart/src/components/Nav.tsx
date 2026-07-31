@@ -1,12 +1,26 @@
 'use client';
 
 import Link from "next/link";
-import { Search, User as UserIcon, LogOut, Settings, ChevronDown, X, ShoppingBag, PlusCircle, LayoutGrid, ClipboardList } from "lucide-react";
+import { 
+  Search, 
+  User as UserIcon, 
+  LogOut, 
+  Settings, 
+  ChevronDown, 
+  X, 
+  ShoppingBag, 
+  ShoppingCart, // Added Cart Icon
+  PlusCircle, 
+  LayoutGrid, 
+  ClipboardList 
+} from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
-import { useRouter } from "next/navigation"; // 1. Added useRouter
+import { useRouter } from "next/navigation";
 import mongoose from "mongoose";
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/redux/store"; // Import RootState type
 
 export interface UserInterface {
   _id?: mongoose.Types.ObjectId | string;
@@ -25,10 +39,13 @@ export default function Nav({ user: initialUser }: { user?: UserInterface }) {
   const [isSigningOut, setIsSigningOut] = useState(false); 
   const profileDropDown = useRef<HTMLDivElement>(null);
   
+  // Get cart items count safely from Redux
+  const { cardData } = useSelector((state: RootState) => state.cart);
+  const cartCount = cardData?.length || 0;
+  
   const router = useRouter();
   const { data: session } = useSession();
   const user = (session?.user as UserInterface) || initialUser;
-
   const isUser = !user || user.role === "user";
   const isAdmin = user?.role === "admin";
 
@@ -42,17 +59,14 @@ export default function Nav({ user: initialUser }: { user?: UserInterface }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 3. Robust async sign-out handler
-  // Sign out function
-const handleSignOut = async () => {
-  setOpen(false);
-  
-  // triggers NextAuth API signout and redirects to /register
-  await signOut({ 
-    callbackUrl: "/register",
-    redirect: true 
-  });
-};
+  const handleSignOut = async () => {
+    setOpen(false);
+    setIsSigningOut(true);
+    await signOut({ 
+      callbackUrl: "/register",
+      redirect: true 
+    });
+  };
 
   const getRoleBadge = (role?: string) => {
     switch (role) {
@@ -84,7 +98,7 @@ const handleSignOut = async () => {
           </span>
         </Link>
 
-        {/* 1. SEARCH BAR — ONLY VISIBLE TO STANDARD USERS */}
+        {/* SEARCH BAR — STANDARD USERS */}
         {isUser && (
           <form className="hidden md:flex flex-1 max-w-md relative mx-4">
             <div className="relative w-full flex items-center">
@@ -98,7 +112,7 @@ const handleSignOut = async () => {
           </form>
         )}
 
-        {/* 2. ADMIN NAVIGATION — ONLY VISIBLE TO ADMINS */}
+        {/* ADMIN NAVIGATION */}
         {isAdmin && (
           <nav className="hidden md:flex items-center gap-1 mx-4">
             <Link
@@ -117,7 +131,7 @@ const handleSignOut = async () => {
             </Link>
             <Link
               href="/admin/manage-orders"
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition-all"
             >
               <ClipboardList className="w-4 h-4 text-emerald-400" />
               Manage Orders
@@ -128,7 +142,7 @@ const handleSignOut = async () => {
         {/* Right Action Icons & User Menu */}
         <div className="flex items-center gap-2 md:gap-3 shrink-0">
           
-          {/* Mobile Search Toggle Button — ONLY VISIBLE TO USERS */}
+          {/* Mobile Search Toggle Button */}
           {isUser && (
             <button
               type="button"
@@ -138,6 +152,30 @@ const handleSignOut = async () => {
             >
               <Search className="w-4 h-4" />
             </button>
+          )}
+
+          {/* 🛒 PROMINENT CART BUTTON (VISIBLE TO standard USERS / GUESTS) */}
+          {isUser && (
+            <Link
+              href="/user/cart"
+                  className="relative p-2.5 md:px-3.5 md:py-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-emerald-500/50 text-slate-200 hover:text-emerald-400 flex items-center gap-2 transition-all group"
+                    >
+              <div className="relative">
+                <ShoppingCart className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                {cartCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -top-2.5 -right-2.5 bg-emerald-400 text-slate-950 text-[10px] font-black h-4 min-w-[16px] px-1 rounded-full flex items-center justify-center border border-slate-950 shadow-md shadow-emerald-500/30"
+                  >
+                    {cartCount}
+                  </motion.span>
+                )}
+              </div>
+              <span className="hidden md:inline text-xs font-bold text-slate-200 group-hover:text-emerald-400 transition-colors">
+                Cart
+              </span>
+            </Link>
           )}
 
           {/* User Account State */}
@@ -191,7 +229,6 @@ const handleSignOut = async () => {
                         My Orders
                       </Link>
                     )}
-
                     {isAdmin && (
                       <div className="md:hidden border-b border-slate-800 pb-1 mb-1">
                         <Link
@@ -220,7 +257,6 @@ const handleSignOut = async () => {
                         </Link>
                       </div>
                     )}
-
                     <Link
                       href="/edit-profile"
                       onClick={() => setOpen(false)}
@@ -230,7 +266,6 @@ const handleSignOut = async () => {
                       Edit Profile / Role
                     </Link>
 
-                    {/* UPDATED SIGN OUT BUTTON */}
                     <button
                       type="button"
                       disabled={isSigningOut}

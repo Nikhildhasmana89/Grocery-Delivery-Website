@@ -4,8 +4,12 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Carrot, Milk, Zap, Sparkles, ChevronLeft, ChevronRight, Leaf } from 'lucide-react';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/redux/store';
+
 
 export default function HeroSection() {
+  
   const slides = [
     {
       id: 1,

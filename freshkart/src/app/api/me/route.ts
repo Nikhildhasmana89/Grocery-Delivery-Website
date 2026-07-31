@@ -1,9 +1,10 @@
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import User from "@/app/models/user.model";
 
 export async function GET(req: NextRequest) {
     try{
-        const session = auth()
+        const session = await auth();
         if(!session || !session.user){
             return NextResponse.json({
                 message: "user is not authenticate"
