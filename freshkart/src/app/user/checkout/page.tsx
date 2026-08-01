@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   MapPin,
@@ -15,9 +17,21 @@ import {
   Briefcase,
   Loader2,
   AlertCircle,
+  CreditCard,
+  Banknote,
+  User,
+  Phone,
+  Sparkles,
 } from "lucide-react";
-import { useSelector } from "react-redux";
-import { RootState } from "@/redux/store";
+import { useSelector, useDispatch } from "react-redux";
+import { RootState, AppDispatch } from "@/redux/store";
+import { clearCart } from "@/redux/CardSlice";
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 // Dynamically import Map component with SSR disabled
 const AddressMap = dynamic(() => import("@/components/AddressMap"), {
@@ -31,41 +45,61 @@ const AddressMap = dynamic(() => import("@/components/AddressMap"), {
 });
 
 export default function CheckoutPage() {
+  const router = useRouter();
+  const dispatch = useDispatch<AppDispatch>();
+
+  // Extract Cart Data & User Info from Redux Store
   const cartData = useSelector(
     (state: RootState) => state.cart?.cartData || (state as any).card?.cardData
   ) || [];
 
-  // Default Location: New Delhi / NCR
+  const currentUser = useSelector(
+    (state: RootState) => (state as any).user?.user || (state as any).auth?.user
+  );
+
+  // Form States matching your exact IOrder schema
+  const [fullName, setFullName] = useState(currentUser?.name || "");
+  const [mobile, setMobile] = useState(currentUser?.phone || "");
+  const [city, setCity] = useState("Delhi");
+  const [stateName, setStateName] = useState("Delhi");
+  const [pincode, setPincode] = useState("");
+  const [houseNo, setHouseNo] = useState("");
+  const [landmark, setLandmark] = useState("");
+  const [addressType, setAddressType] = useState<"home" | "work" | "other">("home");
+  const [paymentMethod, setPaymentMethod] = useState<"cod" | "online">("online");
+
+  // Map States
   const [position, setPosition] = useState<{ lat: number; lng: number }>({
     lat: 28.6139,
     lng: 77.209,
   });
-
-  const [address, setAddress] = useState<string>("Move marker or use current location");
-  const [houseNo, setHouseNo] = useState("");
-  const [landmark, setLandmark] = useState("");
-  const [addressType, setAddressType] = useState<"home" | "work" | "other">("home");
+  const [address, setAddress] = useState<string>("Move marker or search location");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Status & Loading States
   const [isLocating, setIsLocating] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [orderSuccess, setOrderSuccess] = useState(false);
 
-  // Reverse Geocoding with custom User-Agent header
+  // Reverse Geocoding
   const fetchAddress = async (lat: number, lng: number) => {
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-        {
-          headers: {
-            "Accept-Language": "en",
-          },
-        }
+        { headers: { "Accept-Language": "en" } }
       );
       const data = await res.json();
       if (data && data.display_name) {
         setAddress(data.display_name);
-      } else {
-        setAddress(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
+        if (data.address) {
+          if (data.address.city || data.address.town || data.address.state_district) {
+            setCity(data.address.city || data.address.town || data.address.state_district || "Delhi");
+          }
+          if (data.address.state) setStateName(data.address.state);
+          if (data.address.postcode) setPincode(data.address.postcode);
+        }
       }
     } catch {
       setAddress(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
@@ -94,65 +128,41 @@ export default function CheckoutPage() {
       },
       (error) => {
         setIsLocating(false);
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            setErrorMessage("Location permission denied. Please allow location access in browser settings.");
-            break;
-          case error.POSITION_UNAVAILABLE:
-            setErrorMessage("Location information is unavailable.");
-            break;
-          case error.TIMEOUT:
-            setErrorMessage("Location request timed out. Please try again.");
-            break;
-          default:
-            setErrorMessage("An unknown error occurred while retrieving location.");
-        }
+        setErrorMessage("Location permission denied or timed out.");
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
-  // Search Location with Nominatim API
+  // Search Location
   const handleSearchLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     setIsSearching(true);
     setErrorMessage("");
     try {
-      // Searches prioritized for India (countrycodes=in)
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
           searchQuery
         )}&countrycodes=in&limit=1`,
-        {
-          headers: {
-            "Accept-Language": "en",
-          },
-        }
+        { headers: { "Accept-Language": "en" } }
       );
       const data = await res.json();
       if (data && data.length > 0) {
-        const newPos = {
-          lat: parseFloat(data[0].lat),
-          lng: parseFloat(data[0].lon),
-        };
+        const newPos = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
         setPosition(newPos);
         setAddress(data[0].display_name);
       } else {
-        setErrorMessage("Location not found. Please try searching with a city or landmark name.");
+        setErrorMessage("Location not found.");
       }
     } catch {
-      setErrorMessage("Failed to search location. Please check your network connection.");
+      setErrorMessage("Failed to search location.");
     } finally {
       setIsSearching(false);
     }
   };
 
-  // Pricing Math
+  // Pricing Calculation
   const subtotal = cartData.reduce((acc: number, item: any) => {
     const price = typeof item.price === "number" ? item.price : parseFloat(item.price) || 0;
     return acc + price;
@@ -161,8 +171,154 @@ export default function CheckoutPage() {
   const tax = Math.round(subtotal * 0.05);
   const grandTotal = subtotal + deliveryFee + tax;
 
+  // Process Order API Integration
+  const handlePlaceOrder = async () => {
+    setErrorMessage("");
+
+    // Form Validation
+    if (!fullName.trim() || !mobile.trim() || !houseNo.trim() || !pincode.trim()) {
+      setErrorMessage("Please complete all required address fields.");
+      return;
+    }
+
+    if (!cartData.length) {
+      setErrorMessage("Your cart is empty!");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    // Format cart items matching IOrder items schema
+    const formattedItems = cartData.map((item: any) => ({
+      grocery: item._id,
+      quantity: item.quantity || 1,
+      name: item.name,
+      price: String(item.price),
+      image: item.image || "",
+    }));
+
+    const fullAddressString = `${houseNo}, ${landmark ? landmark + ", " : ""}${address}`;
+
+    const orderPayload = {
+      user: currentUser?._id || "650000000000000000000000", // Fallback ID if guest
+      items: formattedItems,
+      totalAmount: String(grandTotal),
+      paymentMethod,
+      address: {
+        fullName,
+        mobile,
+        city: city || "Delhi",
+        state: stateName || "Delhi",
+        pincode,
+        fullAddress: fullAddressString,
+        latitude: position.lat,
+        logitute: position.lng,
+      },
+      status: "pending",
+    };
+
+    if (paymentMethod === "online") {
+      // Trigger Razorpay Payment Gateway Flow
+      try {
+        const options = {
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_YourKeyHere",
+          amount: grandTotal * 100, // Amount in paise
+          currency: "INR",
+          name: "FreshKart Express",
+          description: "Grocery Order Payment",
+          handler: async function (response: any) {
+            if (response.razorpay_payment_id) {
+              await createOrderInDatabase(orderPayload);
+            }
+          },
+          prefill: {
+            name: fullName,
+            contact: mobile,
+          },
+          theme: {
+            color: "#10b981",
+          },
+        };
+
+        if (typeof window !== "undefined" && window.Razorpay) {
+          const rzp = new window.Razorpay(options);
+          rzp.open();
+          setIsSubmitting(false);
+        } else {
+          // Fallback if Razorpay SDK hasn't loaded yet
+          await createOrderInDatabase(orderPayload);
+        }
+      } catch {
+        setIsSubmitting(false);
+        setErrorMessage("Payment gateway initialization failed.");
+      }
+    } else {
+      // COD Order Flow
+      await createOrderInDatabase(orderPayload);
+    }
+  };
+
+  const createOrderInDatabase = async (payload: any) => {
+    try {
+      const res = await fetch("/api/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        dispatch(clearCart());
+        setOrderSuccess(true);
+      } else {
+        setErrorMessage(data.message || "Failed to place order.");
+      }
+    } catch {
+      setErrorMessage("Something went wrong while connecting to the server.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
+      
+      {/* Success Modal Overlay with Framer Motion */}
+      <AnimatePresence>
+        {orderSuccess && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-md w-full text-center space-y-5 shadow-2xl shadow-emerald-500/10"
+            >
+              <div className="relative w-20 h-20 mx-auto bg-emerald-500/10 rounded-full border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <CheckCircle2 className="w-10 h-10 animate-bounce" />
+                <Sparkles className="w-5 h-5 absolute -top-1 -right-1 text-emerald-400 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-white">Order Confirmed!</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Your groceries are being packed and will be delivered in 10 minutes.
+                </p>
+              </div>
+              <button
+                onClick={() => router.push("/")}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 font-black text-xs md:text-sm shadow-lg shadow-emerald-500/20 cursor-pointer"
+              >
+                Back to Shopping
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="max-w-7xl mx-auto px-4 md:px-8 pt-8">
         
         {/* Header */}
@@ -178,13 +334,13 @@ export default function CheckoutPage() {
           </Link>
           <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
             <Truck className="w-4 h-4" />
-            <span>10 Min Delivery to Your Doorstep</span>
+            <span>10 Min Instant Delivery</span>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* Left Column: Interactive Map & Address Details */}
+          {/* Left Column: Interactive Map & Delivery Details */}
           <div className="lg:col-span-7 xl:col-span-8 space-y-6">
             
             {/* Map Card */}
@@ -195,7 +351,7 @@ export default function CheckoutPage() {
                   Select Delivery Location
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Pin your exact building or house on the map for fast delivery
+                  Pin your exact building on the map for fast delivery
                 </p>
               </div>
 
@@ -207,11 +363,11 @@ export default function CheckoutPage() {
                 </div>
               )}
 
-              {/* Search Location Input Form */}
+              {/* Search Input Form */}
               <form onSubmit={handleSearchLocation} className="relative mb-4">
                 <input
                   type="text"
-                  placeholder="Search sector, locality, or landmark (e.g. Rohini, Noida...)"
+                  placeholder="Search locality or landmark..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-10 pr-24 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
@@ -248,10 +404,44 @@ export default function CheckoutPage() {
             {/* Address Details Form */}
             <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl space-y-4">
               <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                Complete Address Details
+                Receiver & Address Info
               </h3>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-400 font-medium mb-1">
+                    Full Name *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Nikhil Dhasmana"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 pl-9 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                    <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 font-medium mb-1">
+                    Mobile Number *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      required
+                      placeholder="10 digit mobile number"
+                      value={mobile}
+                      onChange={(e) => setMobile(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 pl-9 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                    <Phone className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs text-slate-400 font-medium mb-1">
                     House / Flat / Block No. *
@@ -265,13 +455,28 @@ export default function CheckoutPage() {
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
+
                 <div>
+                  <label className="block text-xs text-slate-400 font-medium mb-1">
+                    Pincode *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 110001"
+                    value={pincode}
+                    onChange={(e) => setPincode(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
                   <label className="block text-xs text-slate-400 font-medium mb-1">
                     Landmark (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Near Metro Station"
+                    placeholder="e.g. Near Metro Station / Park"
                     value={landmark}
                     onChange={(e) => setLandmark(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
@@ -311,6 +516,54 @@ export default function CheckoutPage() {
                 </div>
               </div>
             </div>
+
+            {/* Payment Method Selector */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl space-y-4">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                Select Payment Mode
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("online")}
+                  className={`p-4 rounded-2xl border flex items-center justify-between transition-all cursor-pointer ${
+                    paymentMethod === "online"
+                      ? "bg-emerald-500/10 border-emerald-500 text-white"
+                      : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <CreditCard className={`w-5 h-5 ${paymentMethod === "online" ? "text-emerald-400" : "text-slate-500"}`} />
+                    <div className="text-left">
+                      <p className="text-xs font-bold">UPI / Cards / Net Banking</p>
+                      <p className="text-[10px] text-slate-500">Instant & 100% Secure</p>
+                    </div>
+                  </div>
+                  {paymentMethod === "online" && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("cod")}
+                  className={`p-4 rounded-2xl border flex items-center justify-between transition-all cursor-pointer ${
+                    paymentMethod === "cod"
+                      ? "bg-emerald-500/10 border-emerald-500 text-white"
+                      : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Banknote className={`w-5 h-5 ${paymentMethod === "cod" ? "text-emerald-400" : "text-slate-500"}`} />
+                    <div className="text-left">
+                      <p className="text-xs font-bold">Cash on Delivery</p>
+                      <p className="text-[10px] text-slate-500">Pay at your doorstep</p>
+                    </div>
+                  </div>
+                  {paymentMethod === "cod" && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                </button>
+              </div>
+            </div>
+
           </div>
 
           {/* Right Column: Order Summary */}
@@ -350,13 +603,29 @@ export default function CheckoutPage() {
                 <p className="text-xl font-black text-emerald-400">₹{grandTotal}</p>
               </div>
 
-              <button
+              {/* Submit CTA */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 type="button"
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 font-black text-xs md:text-sm shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/35 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                onClick={handlePlaceOrder}
+                disabled={isSubmitting}
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 font-black text-xs md:text-sm shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/35 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
               >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Save Address & Proceed to Pay</span>
-              </button>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                    <span>Processing Order...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>
+                      {paymentMethod === "online" ? "Pay Now & Place Order" : "Confirm COD Order"}
+                    </span>
+                  </>
+                )}
+              </motion.button>
 
               <div className="pt-2 border-t border-slate-800/60 grid grid-cols-2 gap-2 text-[10px] text-slate-400">
                 <div className="flex items-center gap-1.5">
