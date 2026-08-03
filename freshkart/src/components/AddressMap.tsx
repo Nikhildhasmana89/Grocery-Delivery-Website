@@ -1,29 +1,16 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
-import { Locate, Loader2 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
-// Fix default Leaflet marker icon paths
-const defaultIcon = L.icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
+// Fix standard Leaflet marker icons breaking in Webpack/Next.js
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
-
-// Helper component to smoothly animate map view to new position
-function RecenterMap({ lat, lng }: { lat: number; lng: number }) {
-  const map = useMap();
-  useEffect(() => {
-    if (lat && lng) {
-      map.flyTo([lat, lng], 16, { animate: true, duration: 1.2 });
-    }
-  }, [lat, lng, map]);
-  return null;
-}
 
 interface AddressMapProps {
   position: { lat: number; lng: number };
@@ -38,46 +25,62 @@ export default function AddressMap({
   onLocateMe,
   isLocating,
 }: AddressMapProps) {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+
+  // 1. Initialize Map safely
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    // Destroy existing instance before re-creating (protects against React Strict Mode)
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+    }
+
+    const map = L.map(mapContainerRef.current).setView([position.lat, position.lng], 15);
+    mapInstanceRef.current = map;
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
+
+    const marker = L.marker([position.lat, position.lng], { draggable: true }).addTo(map);
+    markerRef.current = marker;
+
+    marker.on("dragend", () => {
+      const latLng = marker.getLatLng();
+      onMarkerDragEnd(latLng.lat, latLng.lng);
+    });
+
+    // CRITICAL: Proper Cleanup on unmount/remount
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []); // Run once on mount
+
+  // 2. Update view/marker when position prop changes externally
+  useEffect(() => {
+    if (mapInstanceRef.current && markerRef.current) {
+      mapInstanceRef.current.setView([position.lat, position.lng], 15);
+      markerRef.current.setLatLng([position.lat, position.lng]);
+    }
+  }, [position.lat, position.lng]);
+
   return (
     <div className="relative w-full h-full">
-      <MapContainer
-        center={[position.lat, position.lng]}
-        zoom={15}
-        scrollWheelZoom={true}
-        className="w-full h-full z-0"
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <RecenterMap lat={position.lat} lng={position.lng} />
-        <Marker
-          position={[position.lat, position.lng]}
-          icon={defaultIcon}
-          draggable={true}
-          eventHandlers={{
-            dragend: (e) => {
-              const marker = e.target;
-              const newPos = marker.getLatLng();
-              onMarkerDragEnd(newPos.lat, newPos.lng);
-            },
-          }}
-        />
-      </MapContainer>
-
-      {/* Floating Circular GPS Locate Button (Blinkit / Google Maps Style) */}
+      <div ref={mapContainerRef} className="w-full h-full z-0" />
       <button
         type="button"
         onClick={onLocateMe}
         disabled={isLocating}
-        title="Re-center to Current Location"
-        className="absolute top-4 right-4 z-[400] w-12 h-12 rounded-full bg-slate-900/90 border border-slate-700/80 text-emerald-400 hover:text-white hover:bg-emerald-500 hover:border-emerald-400 shadow-xl shadow-black/50 backdrop-blur-md flex items-center justify-center transition-all duration-200 cursor-pointer active:scale-90 disabled:opacity-60"
+        className="absolute top-3 right-3 z-[400] bg-slate-900/90 border border-slate-700 text-xs text-white px-3 py-2 rounded-xl shadow-md hover:bg-slate-800 transition-colors"
       >
-        {isLocating ? (
-          <Loader2 className="w-5 h-5 animate-spin" />
-        ) : (
-          <Locate className="w-6 h-6" />
-        )}
+        {isLocating ? "Locating..." : "📍 Locate Me"}
       </button>
     </div>
   );

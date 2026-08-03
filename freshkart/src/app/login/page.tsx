@@ -7,6 +7,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import googleImage from "@/assets/google image.webp";
 import { signIn, getSession } from "next-auth/react";
+import { useDispatch } from "react-redux";
+import { AppDispatch } from "@/redux/store";
+import { setUserData } from "@/redux/userSlice";
 
 type PropType = {
   nextStep?: (s: number) => void;
@@ -15,6 +18,7 @@ type PropType = {
 
 export default function Login({ nextStep, previousStep }: PropType) {
   const router = useRouter();
+  const dispatch = useDispatch<AppDispatch>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -91,6 +95,21 @@ export default function Login({ nextStep, previousStep }: PropType) {
         // Fetch fresh session token details
         const updatedSession = await getSession();
         const user = updatedSession?.user as any;
+
+        console.log("Session User:", user);
+
+        // Save user in Redux
+        dispatch(
+          setUserData({
+            _id: user.id || user._id,
+            name: user.name,
+            email: user.email,
+            mobile: user.mobile,
+            role: user.role,
+            image: user.image,
+          })
+        );
+
         const targetPath = getRedirectPath(user?.roleSelected, user?.role);
 
         setTimeout(() => {

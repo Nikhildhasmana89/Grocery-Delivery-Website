@@ -10,18 +10,55 @@ export async function POST(req: NextRequest) {
     const { userId, items, totalAmount, paymentMethod, address, status } =
       await req.json();
 
+    console.log("Incoming Order:");
+    console.log({
+      userId,
+      items,
+      totalAmount,
+      paymentMethod,
+      address,
+      status,
+    });
     const user = await User.findById(userId);
 
-    if (
-      !user ||
-      !items ||
-      !items.length ||
-      !totalAmount ||
-      !paymentMethod ||
-      !address
-    ) {
+    if (!user) {
       return NextResponse.json(
-        { success: false, message: "Missing required fields" },
+        { success: false, message: "User not found", userId },
+        { status: 400 },
+      );
+    }
+
+    if (!items) {
+      return NextResponse.json(
+        { success: false, message: "Items missing" },
+        { status: 400 },
+      );
+    }
+
+    if (items.length === 0) {
+      return NextResponse.json(
+        { success: false, message: "Cart is empty" },
+        { status: 400 },
+      );
+    }
+
+    if (!totalAmount) {
+      return NextResponse.json(
+        { success: false, message: "Total amount missing" },
+        { status: 400 },
+      );
+    }
+
+    if (!paymentMethod) {
+      return NextResponse.json(
+        { success: false, message: "Payment method missing" },
+        { status: 400 },
+      );
+    }
+
+    if (!address) {
+      return NextResponse.json(
+        { success: false, message: "Address missing" },
         { status: 400 },
       );
     }
@@ -34,7 +71,7 @@ export async function POST(req: NextRequest) {
       pincode,
       fullAddress,
       latitude,
-      logitute,
+      longitude,
     } = address;
     if (
       !fullName ||
@@ -44,7 +81,7 @@ export async function POST(req: NextRequest) {
       !pincode ||
       !fullAddress ||
       latitude === undefined ||
-      logitute === undefined
+      longitude === undefined
     ) {
       return NextResponse.json(
         { success: false, message: "Incomplete delivery address details" },
@@ -65,7 +102,7 @@ export async function POST(req: NextRequest) {
         pincode,
         fullAddress,
         latitude,
-        logitute,
+        longitude,
       },
       status: status || "pending",
     });

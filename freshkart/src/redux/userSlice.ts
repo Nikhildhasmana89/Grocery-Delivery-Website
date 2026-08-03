@@ -1,6 +1,5 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
-// 1. Types for frontend state (use string for _id instead of mongoose ObjectId)
 export interface UserInterface {
   _id?: string;
   name: string;
@@ -17,7 +16,6 @@ interface UserSliceState {
 
 const initialState: UserSliceState = {
   userData: null,
-  
 };
 
 const userSlice = createSlice({
@@ -33,6 +31,5 @@ const userSlice = createSlice({
   },
 });
 
-// 3. Export actions and reducer
 export const { setUserData, clearUser } = userSlice.actions;
 export default userSlice.reducer;

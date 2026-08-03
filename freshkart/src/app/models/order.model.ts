@@ -13,6 +13,9 @@ interface IOrder {
       unit: string;
     },
   ];
+
+  isPaid:boolean;
+
   totalAmount: string;
   paymentMethod: "cod" | "online";
   address: {
@@ -23,7 +26,7 @@ interface IOrder {
     pincode: string;
     fullAddress: string;
     latitude: number;
-    logitute: number;
+    longitude: number;
   };
   status: "pending" | "out of delivery" | "delivered";
   createdAt?: Date;
@@ -57,16 +60,22 @@ const OrderSchema = new mongoose.Schema<IOrder>(
       enum: ["cod", "online"],
       required: true,
     },
-    address: {
-      fullName: { type: String, required: true },
-      mobile: { type: String, required: true },
-      city: { type: String, required: true },
-      state: { type: String, required: true },
-      pincode: { type: String, required: true },
-      fullAddress: { type: String, required: true },
-      latitude: { type: Number, required: true },
-      logitute: { type: Number, required: true },
+
+    isPaid: {
+      type: Boolean,
+      default: false,
     },
+
+    address: {
+  fullName: { type: String, required: true },
+  mobile: { type: String, required: true },
+  city: { type: String, required: true },
+  state: { type: String, required: true },
+  pincode: { type: String, required: true },
+  fullAddress: { type: String, required: true },
+  latitude: { type: Number, required: true },
+  longitude: { type: Number, required: true },
+},
     status: {
       type: String,
       enum: ["pending", "out of delivery", "delivered"],

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -27,12 +28,6 @@ import { useSelector, useDispatch } from "react-redux";
 import { RootState, AppDispatch } from "@/redux/store";
 import { clearCart } from "@/redux/CardSlice";
 
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
-}
-
 // Dynamically import Map component with SSR disabled
 const AddressMap = dynamic(() => import("@/components/AddressMap"), {
   ssr: false,
@@ -49,17 +44,22 @@ export default function CheckoutPage() {
   const dispatch = useDispatch<AppDispatch>();
 
   // Extract Cart Data & User Info from Redux Store
-  const cartData = useSelector(
-    (state: RootState) => state.cart?.cartData || (state as any).card?.cardData
-  ) || [];
+  const cartData =
+    useSelector(
+      (state: RootState) => state.cart?.cartData || (state as any).card?.cardData
+    ) || [];
 
   const currentUser = useSelector(
-    (state: RootState) => (state as any).user?.user || (state as any).auth?.user
-  );
+  (state: RootState) => (state as any).user?.user || (state as any).auth?.user
+);
+  const { data: session } = useSession();
 
-  // Form States matching your exact IOrder schema
+console.log("Redux User:", currentUser);
+console.log("Session User:", session?.user);
+
+  // Form States
   const [fullName, setFullName] = useState(currentUser?.name || "");
-  const [mobile, setMobile] = useState(currentUser?.phone || "");
+  const [mobile, setMobile] = useState(currentUser?.mobile || "");
   const [city, setCity] = useState("Delhi");
   const [stateName, setStateName] = useState("Delhi");
   const [pincode, setPincode] = useState("");
@@ -126,7 +126,7 @@ export default function CheckoutPage() {
         fetchAddress(newPos.lat, newPos.lng);
         setIsLocating(false);
       },
-      (error) => {
+      () => {
         setIsLocating(false);
         setErrorMessage("Location permission denied or timed out.");
       },
@@ -171,15 +171,9 @@ export default function CheckoutPage() {
   const tax = Math.round(subtotal * 0.05);
   const grandTotal = subtotal + deliveryFee + tax;
 
-  // Process Order API Integration
+  // Process Order API Integration (Supports Stripe & COD)
   const handlePlaceOrder = async () => {
     setErrorMessage("");
-
-    // Form Validation
-    if (!fullName.trim() || !mobile.trim() || !houseNo.trim() || !pincode.trim()) {
-      setErrorMessage("Please complete all required address fields.");
-      return;
-    }
 
     if (!cartData.length) {
       setErrorMessage("Your cart is empty!");
@@ -188,93 +182,64 @@ export default function CheckoutPage() {
 
     setIsSubmitting(true);
 
-    // Format cart items matching IOrder items schema
     const formattedItems = cartData.map((item: any) => ({
       grocery: item._id,
       quantity: item.quantity || 1,
       name: item.name,
       price: String(item.price),
       image: item.image || "",
+      unit: item.unit || "pcs",
+
     }));
 
-    const fullAddressString = `${houseNo}, ${landmark ? landmark + ", " : ""}${address}`;
+    const fullAddressString = [houseNo, landmark, address].filter(Boolean).join(", ");
+    console.log("Redux User:", currentUser);
+console.log("Session User:", session?.user);
+console.log("Redux User ID:", currentUser?._id);
+console.log("Session User ID:", (session?.user as any)?.id);
 
     const orderPayload = {
-      user: currentUser?._id || "650000000000000000000000", // Fallback ID if guest
+     userId: currentUser?._id || (session?.user as any)?.id,
       items: formattedItems,
       totalAmount: String(grandTotal),
       paymentMethod,
       address: {
-        fullName,
-        mobile,
+        fullName: fullName || "Guest User",
+        mobile: mobile || "0000000000",
         city: city || "Delhi",
         state: stateName || "Delhi",
-        pincode,
+        pincode: pincode || "000000",
         fullAddress: fullAddressString,
         latitude: position.lat,
-        logitute: position.lng,
+        longitude: position.lng,
       },
       status: "pending",
     };
 
-    if (paymentMethod === "online") {
-      // Trigger Razorpay Payment Gateway Flow
-      try {
-        const options = {
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_YourKeyHere",
-          amount: grandTotal * 100, // Amount in paise
-          currency: "INR",
-          name: "FreshKart Express",
-          description: "Grocery Order Payment",
-          handler: async function (response: any) {
-            if (response.razorpay_payment_id) {
-              await createOrderInDatabase(orderPayload);
-            }
-          },
-          prefill: {
-            name: fullName,
-            contact: mobile,
-          },
-          theme: {
-            color: "#10b981",
-          },
-        };
-
-        if (typeof window !== "undefined" && window.Razorpay) {
-          const rzp = new window.Razorpay(options);
-          rzp.open();
-          setIsSubmitting(false);
-        } else {
-          // Fallback if Razorpay SDK hasn't loaded yet
-          await createOrderInDatabase(orderPayload);
-        }
-      } catch {
-        setIsSubmitting(false);
-        setErrorMessage("Payment gateway initialization failed.");
-      }
-    } else {
-      // COD Order Flow
-      await createOrderInDatabase(orderPayload);
-    }
-  };
-
-  const createOrderInDatabase = async (payload: any) => {
     try {
-      const res = await fetch("/api/order", {
+      const res = await fetch("/api/user/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(orderPayload),
       });
 
       const data = await res.json();
 
       if (data.success) {
         dispatch(clearCart());
-        setOrderSuccess(true);
+
+        if (paymentMethod === "online" && data.url) {
+          // Redirect user directly to Stripe Checkout hosted page
+          window.location.href = data.url;
+        } else {
+          // COD Success Modal
+          setOrderSuccess(true);
+        }
       } else {
         setErrorMessage(data.message || "Failed to place order.");
       }
-    } catch {
+    } catch (err) {
+      console.error("Order process error:", err);
       setErrorMessage("Something went wrong while connecting to the server.");
     } finally {
       setIsSubmitting(false);
@@ -410,12 +375,11 @@ export default function CheckoutPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-slate-400 font-medium mb-1">
-                    Full Name *
+                    Full Name
                   </label>
                   <div className="relative">
                     <input
                       type="text"
-                      required
                       placeholder="e.g. Nikhil Dhasmana"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
@@ -427,12 +391,11 @@ export default function CheckoutPage() {
 
                 <div>
                   <label className="block text-xs text-slate-400 font-medium mb-1">
-                    Mobile Number *
+                    Mobile Number
                   </label>
                   <div className="relative">
                     <input
                       type="tel"
-                      required
                       placeholder="10 digit mobile number"
                       value={mobile}
                       onChange={(e) => setMobile(e.target.value)}
@@ -444,11 +407,10 @@ export default function CheckoutPage() {
 
                 <div>
                   <label className="block text-xs text-slate-400 font-medium mb-1">
-                    House / Flat / Block No. *
+                    House / Flat / Block No.
                   </label>
                   <input
                     type="text"
-                    required
                     placeholder="e.g. Flat 402, Block B"
                     value={houseNo}
                     onChange={(e) => setHouseNo(e.target.value)}
@@ -458,11 +420,10 @@ export default function CheckoutPage() {
 
                 <div>
                   <label className="block text-xs text-slate-400 font-medium mb-1">
-                    Pincode *
+                    Pincode
                   </label>
                   <input
                     type="text"
-                    required
                     placeholder="e.g. 110001"
                     value={pincode}
                     onChange={(e) => setPincode(e.target.value)}
@@ -536,7 +497,7 @@ export default function CheckoutPage() {
                   <div className="flex items-center gap-3">
                     <CreditCard className={`w-5 h-5 ${paymentMethod === "online" ? "text-emerald-400" : "text-slate-500"}`} />
                     <div className="text-left">
-                      <p className="text-xs font-bold">UPI / Cards / Net Banking</p>
+                      <p className="text-xs font-bold">UPI / Cards / Net Banking (Stripe)</p>
                       <p className="text-[10px] text-slate-500">Instant & 100% Secure</p>
                     </div>
                   </div>
@@ -621,7 +582,7 @@ export default function CheckoutPage() {
                   <>
                     <CheckCircle2 className="w-4 h-4" />
                     <span>
-                      {paymentMethod === "online" ? "Pay Now & Place Order" : "Confirm COD Order"}
+                      {paymentMethod === "online" ? "Proceed to Stripe Payment" : "Confirm COD Order"}
                     </span>
                   </>
                 )}
