@@ -1,6 +1,6 @@
 import connectDB from "@/app/lib/db";
 import Order from "@/app/models/order.model";
-import { User } from "@/app/models/user.model";
+import  User  from "@/app/models/user.model";
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
@@ -10,23 +10,23 @@ export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
-   const { userId, items, totalAmount, paymentMethod, address, status } =
-  await req.json();
+    const { userId, items, totalAmount, paymentMethod, address, status } =
+      await req.json();
 
-// 👇 Add these logs here
-console.log("========== Incoming Request ==========");
-console.log({
-  userId,
-  items,
-  totalAmount,
-  paymentMethod,
-  address,
-  status,
-});
+   
+    console.log("========== Incoming Request ==========");
+    console.log({
+      userId,
+      items,
+      totalAmount,
+      paymentMethod,
+      address,
+      status,
+    });
 
-const user = await User.findById(userId);
+    const user = await User.findById(userId);
 
-console.log("User Found:", !!user);
+    console.log("User Found:", !!user);
 
     if (
       !user ||
@@ -117,7 +117,16 @@ console.log("User Found:", !!user);
         { status: 500 },
       );
     }
+    console.log("Stripe Checkout URL:", session.url);
 
+    return NextResponse.json(
+      {
+        success: true,
+        url: session.url,
+        order: newOrder,
+      },
+      { status: 200 },
+    );
   } catch (error: any) {
     console.error("Order Creation API Error:", error);
     return NextResponse.json(

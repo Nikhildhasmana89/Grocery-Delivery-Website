@@ -221,7 +221,7 @@ export default function Nav({ user: initialUser }: { user?: UserInterface }) {
                   >
                     {isUser && (
                       <Link
-                        href="/my-orders"
+                        href="/user/my-orders"
                         onClick={() => setOpen(false)}
                         className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
                       >

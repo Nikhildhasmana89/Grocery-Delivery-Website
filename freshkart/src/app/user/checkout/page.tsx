@@ -217,7 +217,7 @@ console.log("Session User ID:", (session?.user as any)?.id);
     };
 
     try {
-      const res = await fetch("/api/user/order", {
+      const res = await fetch("/api/user/payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderPayload),
