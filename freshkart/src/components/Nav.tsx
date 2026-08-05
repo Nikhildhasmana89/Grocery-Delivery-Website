@@ -40,8 +40,8 @@ export default function Nav({ user: initialUser }: { user?: UserInterface }) {
   const profileDropDown = useRef<HTMLDivElement>(null);
   
   // Get cart items count safely from Redux
-  const { cardData } = useSelector((state: RootState) => state.cart);
-  const cartCount = cardData?.length || 0;
+  const { cartData } = useSelector((state: RootState) => state.cart);
+  const cartCount = cartData?.length || 0;
   
   const router = useRouter();
   const { data: session } = useSession();
