@@ -7,6 +7,7 @@ import Nav from "@/components/Nav";
 
 import UserDashboard from "@/components/UserDashboard";
 import AdminDashboard from "@/components/AdminDashboard";
+import GeoUpdater from "@/components/GeoUpdater";
 import DeliveryBoyDashboard from "@/components/DeliveryBoyDashboard";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,7 @@ export default async function Home() {
   // 4. Render Role-based View
   return (
     <div className="min-h-screen bg-[#07090E] text-white">
+      <GeoUpdater userId={plainUser._id.toString()} />
 
 
       {/* Role-specific Dashboard View */}
