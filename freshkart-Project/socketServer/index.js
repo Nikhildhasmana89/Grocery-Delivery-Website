@@ -52,11 +52,22 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("update-location",({userId,latitude,longitude})=>{
+  socket.on("update-location",async({userId,latitude,longitude})=>{
     console.log("📩 Update Location Event Received");
     console.log("User ID:", userId);
     console.log("Latitude:", latitude);
     console.log("Longitude:", longitude);
+    const location = {
+      type: 'Point',
+      coordinates: [longitude, latitude],
+    }
+    await axios.post(
+      `${process.env.NEXT_BASE_URL}/api/socket/update-location`,
+      {
+        userId,
+        location,
+      }
+    );
   });
 
   socket.on("disconnect", async () => {

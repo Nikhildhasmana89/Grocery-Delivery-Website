@@ -5,7 +5,7 @@ import { NextResponse } from "next/dist/server/web/spec-extension/response";
 export async function GET(request: Request) {
     try{
         await connectDB()
-        const orders = await Order.find().populate("user")
+        const orders = await Order.find({}).populate("user").sort({createdAt:-1})
         if(!orders) {
             return NextResponse.json({ message: "No orders found" }, { status: 404 })
         }

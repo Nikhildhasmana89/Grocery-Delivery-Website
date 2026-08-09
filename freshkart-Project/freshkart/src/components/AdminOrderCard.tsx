@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Package,
@@ -16,6 +16,7 @@ import {
   CreditCard,
   ImageIcon,
 } from "lucide-react";
+import axios from "axios";
 
 // --- Types ---
 export type OrderStatus =
@@ -66,40 +67,45 @@ const defaultItems: OrderItem[] = [
   },
 ];
 
-// Status badge styling map
+// --- Status badge styling map ---
 const statusStyles: Record<
   OrderStatus,
-  { bg: string; text: string; border: string; icon: React.ReactNode }
+  {
+    bg: string;
+    text: string;
+    border: string;
+    icon: React.ReactNode;
+  }
 > = {
   Pending: {
     bg: "bg-amber-500/10",
     text: "text-amber-600 dark:text-amber-400",
     border: "border-amber-500/20",
-    icon: <Clock className="w-3.5 h-3.5 mr-1" />,
+    icon: <Clock className="w-3.5 h-3.5 mr-1 shrink-0" />,
   },
   Processing: {
     bg: "bg-blue-500/10",
     text: "text-blue-600 dark:text-blue-400",
     border: "border-blue-500/20",
-    icon: <Package className="w-3.5 h-3.5 mr-1" />,
+    icon: <Package className="w-3.5 h-3.5 mr-1 shrink-0" />,
   },
   Shipped: {
     bg: "bg-indigo-500/10",
     text: "text-indigo-600 dark:text-indigo-400",
     border: "border-indigo-500/20",
-    icon: <Truck className="w-3.5 h-3.5 mr-1" />,
+    icon: <Truck className="w-3.5 h-3.5 mr-1 shrink-0" />,
   },
   Delivered: {
     bg: "bg-emerald-500/10",
     text: "text-emerald-600 dark:text-emerald-400",
     border: "border-emerald-500/20",
-    icon: <CheckCircle2 className="w-3.5 h-3.5 mr-1" />,
+    icon: <CheckCircle2 className="w-3.5 h-3.5 mr-1 shrink-0" />,
   },
   Cancelled: {
     bg: "bg-rose-500/10",
     text: "text-rose-600 dark:text-rose-400",
     border: "border-rose-500/20",
-    icon: <XCircle className="w-3.5 h-3.5 mr-1" />,
+    icon: <XCircle className="w-3.5 h-3.5 mr-1 shrink-0" />,
   },
 };
 
@@ -118,23 +124,79 @@ export default function AdminOrderCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<OrderStatus>(status);
   const [copied, setCopied] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
-  const handleCopyId = () => {
-    navigator.clipboard.writeText(orderId);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  // Sync state if external status prop changes
+  useEffect(() => {
+    setCurrentStatus(status);
+  }, [status]);
+
+  // --------------------------------------------------
+  // Update order status
+  // --------------------------------------------------
+  const updateStatus = async (id: string, newStatus: OrderStatus) => {
+    try {
+      setIsUpdating(true);
+      const response = await axios.post(
+        `/api/admin/update-order-status/${id}`,
+        { status: newStatus }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Error updating order status:", error);
+      throw error;
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
-  const handleStatusSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  // --------------------------------------------------
+  // Copy order ID
+  // --------------------------------------------------
+  const handleCopyId = async () => {
+    try {
+      await navigator.clipboard.writeText(orderId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy order ID:", error);
+    }
+  };
+
+  // --------------------------------------------------
+  // Status dropdown
+  // --------------------------------------------------
+  const handleStatusSelect = async (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
     const newStatus = e.target.value as OrderStatus;
-    setCurrentStatus(newStatus);
-    if (onStatusChange) onStatusChange(newStatus);
+
+    if (newStatus === currentStatus) return;
+
+    const previousStatus = currentStatus;
+    setCurrentStatus(newStatus); // Optimistic UI update
+
+    try {
+      await updateStatus(orderId, newStatus);
+      onStatusChange?.(newStatus);
+    } catch (error) {
+      setCurrentStatus(previousStatus); // Revert on failure
+      alert("Failed to update order status. Please try again.");
+    }
   };
 
   const currentStatusStyle =
-    statusStyles[currentStatus as OrderStatus] ?? statusStyles.Pending;
+    statusStyles[currentStatus] ?? statusStyles.Pending;
 
-  const totalItemCount = items.reduce((acc, item) => acc + item.quantity, 0);
+  const totalItemCount = items.reduce(
+    (acc, item) => acc + (item.quantity || 0),
+    0
+  );
+
+  const formattedAddress =
+    typeof shippingAddress === "string"
+      ? shippingAddress
+      : shippingAddress?.fullAddress ?? "No address provided";
 
   return (
     <motion.div
@@ -147,18 +209,21 @@ export default function AdminOrderCard({
       {/* --- Card Header --- */}
       <div className="p-5 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/50">
         <div className="flex items-center space-x-3">
-          <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
+          <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl shrink-0">
             <Package className="w-5 h-5" />
           </div>
+
           <div>
             <div className="flex items-center space-x-2">
               <span className="font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
                 {orderId}
               </span>
+
               <button
                 onClick={handleCopyId}
                 className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded transition-colors"
                 title="Copy Order ID"
+                type="button"
               >
                 {copied ? (
                   <Check className="w-3.5 h-3.5 text-emerald-500" />
@@ -167,14 +232,15 @@ export default function AdminOrderCard({
                 )}
               </button>
             </div>
+
             <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center mt-0.5">
-              <Clock className="w-3 h-3 mr-1" />
+              <Clock className="w-3 h-3 mr-1 shrink-0" />
               {orderDate}
             </p>
           </div>
         </div>
 
-        {/* Status Badge & Dropdown Selector */}
+        {/* Status Badge & Dropdown */}
         <div className="flex items-center space-x-2">
           <div
             className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${currentStatusStyle.bg} ${currentStatusStyle.text} ${currentStatusStyle.border}`}
@@ -182,10 +248,12 @@ export default function AdminOrderCard({
             {currentStatusStyle.icon}
             {currentStatus}
           </div>
+
           <select
             value={currentStatus}
             onChange={handleStatusSelect}
-            className="text-xs font-medium bg-slate-100 dark:bg-slate-800 border-none rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            disabled={isUpdating}
+            className="text-xs font-medium bg-slate-100 dark:bg-slate-800 border-none rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <option value="Pending">Set Pending</option>
             <option value="Processing">Set Processing</option>
@@ -203,10 +271,12 @@ export default function AdminOrderCard({
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
             Customer
           </span>
+
           <div className="flex items-center text-slate-800 dark:text-slate-200 font-medium">
             <User className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
             <span>{customerName}</span>
           </div>
+
           <p className="text-xs text-slate-500 dark:text-slate-400 pl-6">
             {customerEmail}
           </p>
@@ -217,12 +287,11 @@ export default function AdminOrderCard({
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
             Shipping To
           </span>
+
           <div className="flex items-start text-slate-800 dark:text-slate-200 font-medium">
             <MapPin className="w-4 h-4 mr-2 text-slate-400 shrink-0 mt-0.5" />
             <span className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-              {typeof shippingAddress === "string"
-                ? shippingAddress
-                : shippingAddress?.fullAddress}
+              {formattedAddress}
             </span>
           </div>
         </div>
@@ -234,14 +303,15 @@ export default function AdminOrderCard({
           <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
             Products:
           </span>
+
           <div className="flex items-center -space-x-2 overflow-hidden">
             {items.slice(0, 3).map((item, idx) => (
               <div
                 key={item.id || idx}
                 className="relative z-10 w-9 h-9 rounded-lg border-2 border-white dark:border-slate-900 bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0 shadow-sm"
-                title={`${(
-  Number(item.price || 0) * Number(item.quantity || 0)
-).toFixed(2)}`}
+                title={`${item.name} ($${(
+                  Number(item.price || 0) * Number(item.quantity || 0)
+                ).toFixed(2)})`}
               >
                 {item.image ? (
                   <img
@@ -251,11 +321,12 @@ export default function AdminOrderCard({
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-400">
-                    <Package className="w-4 h-4" />
+                    <Package className="w-3.5 h-3.5" />
                   </div>
                 )}
               </div>
             ))}
+
             {items.length > 3 && (
               <div className="relative z-20 w-9 h-9 rounded-lg border-2 border-white dark:border-slate-900 bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 text-xs font-bold flex items-center justify-center shrink-0">
                 +{items.length - 3}
@@ -274,10 +345,12 @@ export default function AdminOrderCard({
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="w-full px-5 py-3 flex items-center justify-between text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50/30 dark:bg-slate-900/30 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+          type="button"
         >
           <span className="flex items-center font-semibold">
             {isExpanded ? "Hide Details" : "View Detailed Item List"}
           </span>
+
           <motion.div
             animate={{ rotate: isExpanded ? 180 : 0 }}
             transition={{ duration: 0.2 }}
@@ -296,12 +369,12 @@ export default function AdminOrderCard({
               className="overflow-hidden bg-slate-50/50 dark:bg-slate-950/30"
             >
               <div className="px-5 py-3 space-y-3 divide-y divide-slate-100 dark:divide-slate-800/60">
-                {items.map((item) => (
+                {items.map((item, idx) => (
                   <div
-                    key={item.id}
+                    key={item.id || idx}
                     className="pt-3 first:pt-0 flex items-center justify-between text-xs gap-3"
                   >
-                    {/* Item Thumbnail Image & Info */}
+                    {/* Item Thumbnail & Info */}
                     <div className="flex items-center space-x-3">
                       <div className="w-12 h-12 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
                         {item.image ? (
@@ -314,21 +387,25 @@ export default function AdminOrderCard({
                           <ImageIcon className="w-5 h-5 text-slate-400" />
                         )}
                       </div>
+
                       <div>
                         <p className="font-medium text-slate-800 dark:text-slate-200 line-clamp-1">
                           {item.name}
                         </p>
+
                         <p className="text-slate-400 mt-0.5">
-                          ${Number(item.price || 0).toFixed(2)} × {Number(item.quantity || 0)}
+                          ${Number(item.price || 0).toFixed(2)} ×{" "}
+                          {Number(item.quantity || 0)}
                         </p>
                       </div>
                     </div>
 
                     {/* Subtotal */}
                     <span className="font-semibold text-slate-800 dark:text-slate-200 shrink-0">
-                     ${(
-  Number(item.price || 0) * Number(item.quantity || 0)
-).toFixed(2)}
+                      $
+                      {(
+                        Number(item.price || 0) * Number(item.quantity || 0)
+                      ).toFixed(2)}
                     </span>
                   </div>
                 ))}
@@ -341,13 +418,15 @@ export default function AdminOrderCard({
       {/* --- Card Footer --- */}
       <div className="p-5 bg-slate-50/80 dark:bg-slate-900/80 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
         <div className="flex items-center text-xs text-slate-500 dark:text-slate-400">
-          <CreditCard className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
+          <CreditCard className="w-3.5 h-3.5 mr-1.5 text-slate-400 shrink-0" />
           <span>{paymentMethod}</span>
         </div>
+
         <div className="text-right">
           <span className="text-xs text-slate-500 dark:text-slate-400 mr-2">
             Total
           </span>
+
           <span className="text-base font-bold text-slate-900 dark:text-slate-100">
             ${Number(totalAmount || 0).toFixed(2)}
           </span>

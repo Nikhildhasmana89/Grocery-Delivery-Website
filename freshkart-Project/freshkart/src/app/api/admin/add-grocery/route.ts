@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     // 5. Save to database matching the schema types
     const grocery = await Grocery.create({
       name,
-      price: price.toString(), // Kept as string to match your Mongoose Schema
+      price: price.toString(), 
       category,
       unit,
       image: imageUrl,

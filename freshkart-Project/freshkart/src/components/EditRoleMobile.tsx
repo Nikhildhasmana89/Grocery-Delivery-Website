@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -19,7 +19,7 @@ import {
   ChevronRight
 } from "lucide-react";
 
-const ROLES = [
+const INITIAL_ROLES = [
   { 
     id: "user", 
     label: "User", 
@@ -56,10 +56,31 @@ export default function EditRoleMobile({
 }: PropType) {
   const router = useRouter();
   const { update } = useSession();
+
+  // Roles state initialized with standard roles
+  const [roles, setRoles] = useState(INITIAL_ROLES);
   const [selectedRole, setSelectedRole] = useState(initialRole);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  // Check if admin exists on mount and filter options accordingly
+  useEffect(() => {
+    const checkForAdmin = async () => {
+      try {
+        const result = await axios.get("/api/check-for-admin");
+        if (result.data?.adminExist) {
+          setRoles((prev) => prev.filter((r) => r.id !== "admin"));
+          // Fallback selected role if 'admin' was selected previously
+          setSelectedRole((prev) => (prev === "admin" ? "user" : prev));
+        }
+      } catch (error) {
+        console.error("Error checking admin status:", error);
+      }
+    };
+
+    checkForAdmin();
+  }, []);
 
   const handleBack = () => {
     if (previousStep) {
@@ -71,13 +92,13 @@ export default function EditRoleMobile({
     }
   };
 
- const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus(null);
     setLoading(true);
 
     try {
-      const res = await axios.post("/api/user/edit-role-mobile", {
+      await axios.post("/api/user/edit-role-mobile", {
         userId,
         role: selectedRole,
       });
@@ -89,13 +110,11 @@ export default function EditRoleMobile({
 
       setIsSuccess(true);
 
-      // Perform fast redirect directly to load your component view
+      // Perform redirect transition
       setTimeout(() => {
         if (previousStep) {
-          // If parent passed a step-switcher callback
           previousStep(1);
         } else {
-          // Hard reload home route so parent component instantly renders <AdminDashboard />
           window.location.href = "/";
         }
       }, 1000);
@@ -172,7 +191,7 @@ export default function EditRoleMobile({
       >
         <AnimatePresence mode="wait">
           {isSuccess ? (
-            /* Success Completion Animation View */
+            /* Success View */
             <motion.div
               key="success-screen"
               initial={{ opacity: 0, scale: 0.9 }}
@@ -213,7 +232,7 @@ export default function EditRoleMobile({
                 </p>
               </motion.div>
 
-              {/* Dynamic Redirect Progress Meter */}
+              {/* Dynamic Progress Meter */}
               <div className="w-48 h-1.5 bg-slate-900 rounded-full overflow-hidden mt-4 border border-slate-800">
                 <motion.div
                   initial={{ width: "0%" }}
@@ -270,88 +289,86 @@ export default function EditRoleMobile({
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 
-                {/* Role Selection Grid */}
+                {/* Dynamic Role Selection Grid */}
                 <div className="space-y-2.5">
-                  <div className="space-y-2.5">
-                    {ROLES.map((role) => {
-                      const Icon = role.icon;
-                      const isSelected = selectedRole === role.id;
+                  {roles.map((role) => {
+                    const Icon = role.icon;
+                    const isSelected = selectedRole === role.id;
 
-                      return (
-                        <motion.div
-                          key={role.id}
-                          whileHover={{ scale: 1.01, x: 2 }}
-                          whileTap={{ scale: 0.99 }}
-                          onClick={() => setSelectedRole(role.id)}
-                          className={`relative cursor-pointer rounded-2xl p-3.5 border transition-all duration-200 flex items-center gap-3.5 select-none ${
+                    return (
+                      <motion.div
+                        key={role.id}
+                        whileHover={{ scale: 1.01, x: 2 }}
+                        whileTap={{ scale: 0.99 }}
+                        onClick={() => setSelectedRole(role.id)}
+                        className={`relative cursor-pointer rounded-2xl p-3.5 border transition-all duration-200 flex items-center gap-3.5 select-none ${
+                          isSelected
+                            ? "border-emerald-500/80 bg-emerald-500/10 text-white shadow-[0_0_20px_rgba(16,185,129,0.15)]"
+                            : "bg-slate-900/60 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:bg-slate-900/90 hover:text-slate-200"
+                        }`}
+                      >
+                        {/* Active Selection Indicator */}
+                        {isSelected && (
+                          <motion.div
+                            layoutId="activeRoleIndicator"
+                            className="absolute inset-0 bg-gradient-to-r from-emerald-500/15 via-cyan-500/10 to-transparent rounded-2xl pointer-events-none border border-emerald-400/40"
+                            transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                          />
+                        )}
+
+                        {/* Role Icon Container */}
+                        <div
+                          className={`p-2.5 rounded-xl border transition-colors ${
                             isSelected
-                              ? "border-emerald-500/80 bg-emerald-500/10 text-white shadow-[0_0_20px_rgba(16,185,129,0.15)]"
-                              : "bg-slate-900/60 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:bg-slate-900/90 hover:text-slate-200"
+                              ? "bg-gradient-to-br from-emerald-400 to-cyan-400 text-slate-950 border-emerald-300 shadow-md shadow-emerald-500/20"
+                              : "bg-slate-950 border-slate-800 text-slate-400"
                           }`}
                         >
-                          {/* Animated Active Selection Indicator */}
-                          {isSelected && (
-                            <motion.div
-                              layoutId="activeRoleIndicator"
-                              className="absolute inset-0 bg-gradient-to-r from-emerald-500/15 via-cyan-500/10 to-transparent rounded-2xl pointer-events-none border border-emerald-400/40"
-                              transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                            />
-                          )}
+                          <Icon className="w-5 h-5" />
+                        </div>
 
-                          {/* Role Icon Container */}
-                          <div
-                            className={`p-2.5 rounded-xl border transition-colors ${
-                              isSelected
-                                ? "bg-gradient-to-br from-emerald-400 to-cyan-400 text-slate-950 border-emerald-300 shadow-md shadow-emerald-500/20"
-                                : "bg-slate-950 border-slate-800 text-slate-400"
-                            }`}
-                          >
-                            <Icon className="w-5 h-5" />
-                          </div>
-
-                          {/* Role Text Content */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs font-bold text-slate-100 tracking-wide">
-                                {role.label}
-                              </p>
-                              {role.badge && (
-                                <span
-                                  className={`text-[9px] px-2 py-0.5 rounded-full font-medium border ${
-                                    isSelected
-                                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                                      : "bg-slate-800/80 text-slate-400 border-slate-700"
-                                  }`}
-                                >
-                                  {role.badge}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                              {role.desc}
+                        {/* Role Description */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-bold text-slate-100 tracking-wide">
+                              {role.label}
                             </p>
-                          </div>
-
-                          {/* Radio Check Circle */}
-                          <div
-                            className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
-                              isSelected
-                                ? "border-emerald-400 bg-emerald-400"
-                                : "border-slate-700 bg-slate-950"
-                            }`}
-                          >
-                            {isSelected && (
-                              <motion.div
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                className="w-2 h-2 rounded-full bg-slate-950"
-                              />
+                            {role.badge && (
+                              <span
+                                className={`text-[9px] px-2 py-0.5 rounded-full font-medium border ${
+                                  isSelected
+                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                    : "bg-slate-800/80 text-slate-400 border-slate-700"
+                                }`}
+                              >
+                                {role.badge}
+                              </span>
                             )}
                           </div>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
+                          <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                            {role.desc}
+                          </p>
+                        </div>
+
+                        {/* Radio Check Circle */}
+                        <div
+                          className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
+                            isSelected
+                              ? "border-emerald-400 bg-emerald-400"
+                              : "border-slate-700 bg-slate-950"
+                          }`}
+                        >
+                          {isSelected && (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              className="w-2 h-2 rounded-full bg-slate-950"
+                            />
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
                 </div>
 
                 {/* Submit Action Button */}
