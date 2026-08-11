@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -67,7 +67,7 @@ console.log("Session User:", session?.user);
   const [landmark, setLandmark] = useState("");
   const [addressType, setAddressType] = useState<"home" | "work" | "other">("home");
   const [paymentMethod, setPaymentMethod] = useState<"cod" | "online">("online");
-
+  
   // Map States
   const [position, setPosition] = useState<{ lat: number; lng: number }>({
     lat: 28.6139,
@@ -75,13 +75,19 @@ console.log("Session User:", session?.user);
   });
   const [address, setAddress] = useState<string>("Move marker or search location");
   const [searchQuery, setSearchQuery] = useState("");
-
+  
   // Status & Loading States
   const [isLocating, setIsLocating] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [orderSuccess, setOrderSuccess] = useState(false);
+  
+  const isProcessingRef = useRef(false);
+
+  const orderRequestIdRef = useRef(
+  typeof crypto !== "undefined" ? crypto.randomUUID() : ""
+);
 
   // Reverse Geocoding
   const fetchAddress = async (lat: number, lng: number) => {
@@ -172,15 +178,20 @@ console.log("Session User:", session?.user);
   const grandTotal = subtotal + deliveryFee + tax;
 
   // Process Order API Integration (Supports Stripe & COD)
-  const handlePlaceOrder = async () => {
-    setErrorMessage("");
+ const handlePlaceOrder = async () => {
+  if (isProcessingRef.current) {
+    return;
+  }
 
-    if (!cartData.length) {
-      setErrorMessage("Your cart is empty!");
-      return;
-    }
+  setErrorMessage("");
 
-    setIsSubmitting(true);
+  if (!cartData.length) {
+    setErrorMessage("Your cart is empty!");
+    return;
+  }
+
+  isProcessingRef.current = true;
+  setIsSubmitting(true);
 
     const formattedItems = cartData.map((item: any) => ({
       grocery: item._id,
@@ -198,23 +209,25 @@ console.log("Session User:", session?.user);
 console.log("Redux User ID:", currentUser?._id);
 console.log("Session User ID:", (session?.user as any)?.id);
 
-    const orderPayload = {
-     userId: currentUser?._id || (session?.user as any)?.id,
-      items: formattedItems,
-      totalAmount: String(grandTotal),
-      paymentMethod,
-      address: {
-        fullName: fullName || "Guest User",
-        mobile: mobile || "0000000000",
-        city: city || "Delhi",
-        state: stateName || "Delhi",
-        pincode: pincode || "000000",
-        fullAddress: fullAddressString,
-        latitude: position.lat,
-        longitude: position.lng,
-      },
-      status: "pending",
-    };
+   const orderPayload = {
+  orderRequestId: orderRequestIdRef.current,
+
+  userId: currentUser?._id || (session?.user as any)?.id,
+  items: formattedItems,
+  totalAmount: String(grandTotal),
+  paymentMethod,
+  address: {
+    fullName: fullName || "Guest User",
+    mobile: mobile || "0000000000",
+    city: city || "Delhi",
+    state: stateName || "Delhi",
+    pincode: pincode || "000000",
+    fullAddress: fullAddressString,
+    latitude: position.lat,
+    longitude: position.lng,
+  },
+  status: "pending",
+};
 
     try {
       const res = await fetch("/api/user/payment", {
@@ -242,7 +255,8 @@ console.log("Session User ID:", (session?.user as any)?.id);
       console.error("Order process error:", err);
       setErrorMessage("Something went wrong while connecting to the server.");
     } finally {
-      setIsSubmitting(false);
+      isProcessingRef.current = false;
+  setIsSubmitting(false);
     }
   };
 

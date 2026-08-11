@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import AdminOrderCard, { OrderStatus } from "../../../components/AdminOrderCard";
 import { IOrder } from "../../../models/order.model";
+import { getSocket } from "@/lib/socket";
 
 // Filter Tab Options
 type FilterTab = "All" | OrderStatus;
@@ -47,6 +48,25 @@ export default function ManageOrders() {
     fetchOrders();
   }, []);
 
+
+  useEffect(() => {
+  const socket = getSocket();
+
+  if (!socket) return;
+
+  const handleNewOrder = (newOrder: IOrder) => {
+  console.log("🛒 New order received:", newOrder);
+
+    setOrders((prev) => [newOrder, ...prev]);
+  };
+
+  socket.on("new-order", handleNewOrder);
+
+  return () => {
+    socket.off("new-order", handleNewOrder);
+  };
+}, []);
+
   // --- Handle Status Update from Child Card ---
   const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
     // Optimistic UI update
@@ -59,10 +79,12 @@ export default function ManageOrders() {
     );
 
     try {
-      await axios.patch("/api/admin/update-order-status", {
-        orderId,
-        status: newStatus,
-      });
+      await axios.post(
+  `/api/admin/update-order-status/${orderId}`,
+  {
+    status: newStatus,
+  }
+);
     } catch (err) {
       console.error("Failed to update status on server:", err);
       // Revert/refresh on error

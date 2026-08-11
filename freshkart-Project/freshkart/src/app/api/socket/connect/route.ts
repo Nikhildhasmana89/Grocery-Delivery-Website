@@ -8,9 +8,17 @@ export async function POST(req: NextRequest) {
 
     const { userId, socketId } = await req.json();
 
+    console.log("🔗 Connecting socket:", {
+      userId,
+      socketId,
+    });
+
     const user = await User.findByIdAndUpdate(
       userId,
-      { socketId,isOnline:true },
+      {
+        socketId,
+        isOnline: true,
+      },
       { new: true }
     );
 
@@ -21,6 +29,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    console.log("✅ Socket saved:", {
+      userId: user._id,
+      socketId: user.socketId,
+      isOnline: user.isOnline,
+    });
+
     return NextResponse.json(
       {
         message: "Socket ID updated successfully",
@@ -29,7 +43,7 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error(error);
+    console.error("❌ Socket connect error:", error);
 
     return NextResponse.json(
       { message: "Internal Server Error" },

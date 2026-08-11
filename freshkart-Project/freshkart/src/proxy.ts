@@ -5,7 +5,12 @@ export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // 1. List of paths accessible without authentication
-  const publicRoutes = ["/login", "/register", "/api/auth"];
+  const publicRoutes = [
+  "/login",
+  "/register",
+  "/api/auth",
+  "/api/socket",
+];
 
   // Check if current route matches or starts with any public route
   const isPublicRoute = publicRoutes.some((route) => {
@@ -47,7 +52,14 @@ export async function proxy(req: NextRequest) {
   }
 
   // 4. Case-Insensitive Role Guard Checks
-  const userRole = typeof token.role === "string" ? token.role.trim().toLowerCase() : "";
+  const userRole =
+    typeof token.role === "string" ? token.role.trim().toLowerCase() : "";
+  console.log("========== PROXY AUTH ==========");
+  console.log("Path:", pathname);
+  console.log("Token role:", token.role);
+  console.log("Processed role:", userRole);
+  console.log("Token:", token);
+  console.log("================================");
 
   if (pathname.startsWith("/user") && userRole !== "user") {
     return NextResponse.redirect(new URL("/unauthorized", req.url));

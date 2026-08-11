@@ -1,7 +1,7 @@
 "use client"
 
 import { IOrder } from '@/models/order.model'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   PackageCheck,
@@ -46,6 +46,7 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
   const [isExpanded, setIsExpanded] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [status, setStatus] = useState(order.status)
 
   // Status configuration mapping
   const getStatusBadge = (status: string) => {
@@ -104,6 +105,15 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
       setIsCancelling(false)
     }
   }
+
+  useEffect(()=>{
+    const socket = getSocket()
+    socket.on("order-status-update",(data) => {
+      if(data.orderId.tostring() == order._id){
+        setStatus(data.status)
+      }
+    })
+  },[])
 
   return (
     <>

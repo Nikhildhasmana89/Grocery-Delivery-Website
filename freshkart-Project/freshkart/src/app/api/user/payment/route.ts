@@ -1,6 +1,6 @@
 import connectDB from "@/lib/db";
 import Order from "@/models/order.model";
-import  User  from "@/models/user.model";
+import User from "@/models/user.model";
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
@@ -10,12 +10,19 @@ export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
-    const { userId, items, totalAmount, paymentMethod, address, status } =
-      await req.json();
+    const {
+      orderRequestId,
+      userId,
+      items,
+      totalAmount,
+      paymentMethod,
+      address,
+      status,
+    } = await req.json();
 
-   
     console.log("========== Incoming Request ==========");
     console.log({
+      orderRequestId,
       userId,
       items,
       totalAmount,
@@ -29,6 +36,7 @@ export async function POST(req: NextRequest) {
     console.log("User Found:", !!user);
 
     if (
+      !orderRequestId ||
       !user ||
       !items ||
       !items.length ||
@@ -65,6 +73,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { success: false, message: "Incomplete delivery address details" },
         { status: 400 },
+      );
+    }
+
+    const existingOrder = await Order.findOne({ orderRequestId });
+
+    if (existingOrder) {
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Order already created",
+          order: existingOrder,
+        },
+        { status: 200 },
       );
     }
 

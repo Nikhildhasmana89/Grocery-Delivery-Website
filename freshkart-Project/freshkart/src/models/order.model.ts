@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 export interface IOrder {
   _id?: mongoose.Types.ObjectId;
   user: mongoose.Types.ObjectId;
+  orderRequestId: string;
   items: [
     {
       grocery: mongoose.Types.ObjectId;
@@ -14,7 +15,7 @@ export interface IOrder {
     },
   ];
 
-  isPaid:boolean;
+  isPaid: boolean;
 
   totalAmount: string;
   paymentMethod: "cod" | "online";
@@ -41,6 +42,12 @@ const OrderSchema = new mongoose.Schema<IOrder>(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+    orderRequestId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
     },
     items: [
       {
@@ -69,15 +76,15 @@ const OrderSchema = new mongoose.Schema<IOrder>(
     },
 
     address: {
-  fullName: { type: String, required: true },
-  mobile: { type: String, required: true },
-  city: { type: String, required: true },
-  state: { type: String, required: true },
-  pincode: { type: String, required: true },
-  fullAddress: { type: String, required: true },
-  latitude: { type: Number, required: true },
-  longitude: { type: Number, required: true },
-},
+      fullName: { type: String, required: true },
+      mobile: { type: String, required: true },
+      city: { type: String, required: true },
+      state: { type: String, required: true },
+      pincode: { type: String, required: true },
+      fullAddress: { type: String, required: true },
+      latitude: { type: Number, required: true },
+      longitude: { type: Number, required: true },
+    },
     status: {
       type: String,
       enum: ["pending", "out of delivery", "delivered"],
@@ -88,10 +95,10 @@ const OrderSchema = new mongoose.Schema<IOrder>(
       ref: "DeliveryAssignment",
       default: null,
     },
-    assignedDeliveryBoy:{
+    assignedDeliveryBoy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-    }
+    },
   },
   {
     timestamps: true,

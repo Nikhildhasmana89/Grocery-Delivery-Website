@@ -8,26 +8,23 @@ interface GeoUpdateProps {
 }
 
 export default function GeoUpdater({ userId }: GeoUpdateProps) {
-  const socket = getSocket();
-
   useEffect(() => {
     if (!userId) return;
 
-    socket.on("connect", () => {
-      console.log("✅ Connected");
-      console.log("Socket ID:", socket.id);
+    const socket = getSocket(userId);
 
-      console.log("📤 Sending Identity:", userId);
-      socket.emit("identity", userId);
-    });
-
-    socket.on("connect_error", (err) => {
+    const handleConnectError = (err: Error) => {
       console.error("❌ Connect Error:", err.message);
-    });
+    };
+
+    socket.on("connect_error", handleConnectError);
 
     if (!navigator.geolocation) {
       console.log("Geolocation is not supported by this browser.");
-      return;
+
+      return () => {
+        socket.off("connect_error", handleConnectError);
+      };
     }
 
     const watcher = navigator.geolocation.watchPosition(
@@ -37,6 +34,11 @@ export default function GeoUpdater({ userId }: GeoUpdateProps) {
 
         console.log("📍 Location:", lat, lon);
 
+        if (!socket.connected) {
+          console.log("⚠️ Socket not connected");
+          return;
+        }
+
         socket.emit("update-location", {
           userId,
           latitude: lat,
@@ -44,7 +46,7 @@ export default function GeoUpdater({ userId }: GeoUpdateProps) {
         });
       },
       (err) => {
-        console.error("Error getting location:", err);
+        console.error("❌ Error getting location:", err);
       },
       {
         enableHighAccuracy: true,
@@ -55,8 +57,9 @@ export default function GeoUpdater({ userId }: GeoUpdateProps) {
 
     return () => {
       navigator.geolocation.clearWatch(watcher);
-      socket.off("connect");
-      socket.off("connect_error");
+      socket.off("connect_error", handleConnectError);
+
+      // Don't disconnect the singleton socket.
     };
   }, [userId]);
 

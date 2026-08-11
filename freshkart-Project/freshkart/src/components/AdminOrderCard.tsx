@@ -20,11 +20,9 @@ import axios from "axios";
 
 // --- Types ---
 export type OrderStatus =
-  | "Pending"
-  | "Processing"
-  | "Shipped"
-  | "Delivered"
-  | "Cancelled";
+  | "pending"
+  | "out of delivery"
+  | "delivered";
 
 export interface OrderItem {
   id: string;
@@ -77,35 +75,25 @@ const statusStyles: Record<
     icon: React.ReactNode;
   }
 > = {
-  Pending: {
+  pending: {
     bg: "bg-amber-500/10",
     text: "text-amber-600 dark:text-amber-400",
     border: "border-amber-500/20",
     icon: <Clock className="w-3.5 h-3.5 mr-1 shrink-0" />,
   },
-  Processing: {
+
+  "out of delivery": {
     bg: "bg-blue-500/10",
     text: "text-blue-600 dark:text-blue-400",
     border: "border-blue-500/20",
-    icon: <Package className="w-3.5 h-3.5 mr-1 shrink-0" />,
-  },
-  Shipped: {
-    bg: "bg-indigo-500/10",
-    text: "text-indigo-600 dark:text-indigo-400",
-    border: "border-indigo-500/20",
     icon: <Truck className="w-3.5 h-3.5 mr-1 shrink-0" />,
   },
-  Delivered: {
+
+  delivered: {
     bg: "bg-emerald-500/10",
     text: "text-emerald-600 dark:text-emerald-400",
     border: "border-emerald-500/20",
     icon: <CheckCircle2 className="w-3.5 h-3.5 mr-1 shrink-0" />,
-  },
-  Cancelled: {
-    bg: "bg-rose-500/10",
-    text: "text-rose-600 dark:text-rose-400",
-    border: "border-rose-500/20",
-    icon: <XCircle className="w-3.5 h-3.5 mr-1 shrink-0" />,
   },
 };
 
@@ -115,7 +103,7 @@ export default function AdminOrderCard({
   customerEmail = "sarah.j@example.com",
   shippingAddress = "742 Evergreen Terrace, Springfield, OR 97477",
   orderDate = "Oct 24, 2026 • 14:32",
-  status = "Processing",
+  status = "pending",
   paymentMethod = "Credit Card (•••• 4242)",
   items = defaultItems,
   totalAmount = 229.97,
@@ -135,20 +123,41 @@ export default function AdminOrderCard({
   // Update order status
   // --------------------------------------------------
   const updateStatus = async (id: string, newStatus: OrderStatus) => {
-    try {
-      setIsUpdating(true);
-      const response = await axios.post(
-        `/api/admin/update-order-status/${id}`,
-        { status: newStatus }
-      );
-      return response.data;
-    } catch (error) {
-      console.error("Error updating order status:", error);
-      throw error;
-    } finally {
-      setIsUpdating(false);
-    }
-  };
+  try {
+    setIsUpdating(true);
+
+    console.log("📦 Updating order:");
+    console.log("Order ID:", id);
+    console.log("New Status:", newStatus);
+
+    const response = await axios.post(
+      `/api/admin/update-order-status/${id}`,
+      {
+        status: newStatus,
+      }
+    );
+
+    console.log("✅ API RESPONSE:", response.data);
+
+    return response.data;
+  } catch (error: any) {
+    console.error("❌ UPDATE ORDER ERROR:", error);
+
+    console.error(
+      "❌ SERVER RESPONSE:",
+      error.response?.data
+    );
+
+    console.error(
+      "❌ STATUS:",
+      error.response?.status
+    );
+
+    throw error;
+  } finally {
+    setIsUpdating(false);
+  }
+};
 
   // --------------------------------------------------
   // Copy order ID
@@ -186,7 +195,7 @@ export default function AdminOrderCard({
   };
 
   const currentStatusStyle =
-    statusStyles[currentStatus] ?? statusStyles.Pending;
+    statusStyles[currentStatus] ?? statusStyles.pending;
 
   const totalItemCount = items.reduce(
     (acc, item) => acc + (item.quantity || 0),
@@ -255,11 +264,13 @@ export default function AdminOrderCard({
             disabled={isUpdating}
             className="text-xs font-medium bg-slate-100 dark:bg-slate-800 border-none rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <option value="Pending">Set Pending</option>
-            <option value="Processing">Set Processing</option>
-            <option value="Shipped">Set Shipped</option>
-            <option value="Delivered">Set Delivered</option>
-            <option value="Cancelled">Set Cancelled</option>
+            <option value="pending">Set Pending</option>
+
+<option value="out of delivery">
+  Set Out of Delivery
+</option>
+
+<option value="delivered">Set Delivered</option>
           </select>
         </div>
       </div>

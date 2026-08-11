@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Order from "@/models/order.model";
 import User from "@/models/user.model";
+import crypto from "crypto";
+import emitEventHandler from "@/lib/emitEventHandler";
 
 export async function POST(req: NextRequest) {
   try {
@@ -89,8 +91,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const orderRequestId = `ORD-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
     const newOrder = await Order.create({
       user: userId,
+      orderRequestId,
       items,
       totalAmount: String(totalAmount),
       paymentMethod,
@@ -106,6 +110,8 @@ export async function POST(req: NextRequest) {
       },
       status: status || "pending",
     });
+
+    await emitEventHandler("new-order", newOrder);
 
     return NextResponse.json(
       {
