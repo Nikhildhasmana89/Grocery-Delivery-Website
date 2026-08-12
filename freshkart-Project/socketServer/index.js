@@ -146,11 +146,15 @@ io.on("connection", (socket) => {
 
 app.post("/notify", (req, res) => {
   try {
-    const { event, data, socketId } = req.body;
+    const { event, data, socketId } =
+      req.body;
 
-    console.log("📢 Notification request");
+    console.log("\n================================");
+    console.log("📢 NOTIFICATION REQUEST");
     console.log("Event:", event);
     console.log("Socket ID:", socketId);
+    console.log("Data:", data);
+    console.log("================================");
 
     if (!event) {
       return res.status(400).json({
@@ -159,32 +163,74 @@ app.post("/notify", (req, res) => {
       });
     }
 
+    // =========================================
+    // SEND TO SPECIFIC SOCKET
+    // =========================================
+
     if (socketId) {
-      io.to(socketId).emit(event, data);
+      const targetSocket =
+        io.sockets.sockets.get(socketId);
 
       console.log(
-        `✅ Event "${event}" sent to socket ${socketId}`
+        "Socket currently connected:",
+        !!targetSocket,
       );
-    } else {
-      io.emit(event, data);
+
+      if (!targetSocket) {
+        console.log(
+          "❌ Socket does not exist:",
+          socketId,
+        );
+
+        return res.status(404).json({
+          success: false,
+          message:
+            "Socket is not currently connected",
+          socketId,
+        });
+      }
+
+      targetSocket.emit(event, data);
 
       console.log(
-        `📢 Event "${event}" broadcasted`
+        `✅ Event "${event}" sent to socket ${socketId}`,
       );
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Notification sent successfully",
+        socketId,
+        event,
+      });
     }
+
+    // =========================================
+    // BROADCAST
+    // =========================================
+
+    io.emit(event, data);
+
+    console.log(
+      `📢 Event "${event}" broadcasted`,
+    );
 
     return res.status(200).json({
       success: true,
-      message: socketId
-        ? "Notification sent to socket"
-        : "Notification broadcasted",
+      message:
+        "Notification broadcasted",
+      event,
     });
   } catch (error) {
-    console.error("❌ Notify error:", error);
+    console.error(
+      "❌ Notify error:",
+      error,
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to send notification",
+      message:
+        "Failed to send notification",
     });
   }
 });

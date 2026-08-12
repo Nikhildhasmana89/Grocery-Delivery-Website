@@ -1,10 +1,16 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { getSocket } from "@/lib/socket";
 import { useSession } from "next-auth/react";
+
 import {
   Bike,
   MapPin,
@@ -15,82 +21,669 @@ import {
   IndianRupee,
   RefreshCw,
   Sparkles,
+  Phone,
+  ShoppingBag,
+  Loader2,
+  AlertCircle,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 
-interface Assignment {
-  _id: string;
-  status: string;
-  order?: {
-    _id: string;
-    totalAmount?: number;
-    deliveryAddress?: string;
-  };
-  createdAt?: string;
+/* =========================================================
+   TYPES
+========================================================= */
+
+interface OrderItem {
+  grocery: string;
+  quantity: number;
+  name: string;
+  price: string;
+  image: string;
+  unit: string;
 }
 
+interface OrderAddress {
+  fullName: string;
+  mobile: string;
+  city: string;
+  state: string;
+  pincode: string;
+  fullAddress: string;
+  latitude: number;
+  longitude: number;
+}
+
+interface Order {
+  _id: string;
+  orderRequestId?: string;
+
+  user:
+    | string
+    | {
+        _id: string;
+        name?: string;
+        email?: string;
+      };
+
+  items: OrderItem[];
+
+  totalAmount: string;
+
+  paymentMethod: "cod" | "online";
+
+  isPaid: boolean;
+
+  address: OrderAddress;
+
+  assignment?: string | null;
+
+  assignedDeliveryBoy?: string | null;
+
+  status:
+    | "pending"
+    | "out of delivery"
+    | "delivered";
+
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface DeliveryAssignment {
+  _id: string;
+
+  order:
+    | Order
+    | null;
+
+  broadcastedTo: string[];
+
+  assignedTo:
+    | string
+    | null;
+
+  status:
+    | "broadcasted"
+    | "assigned"
+    | "delivered"
+    | "cancelled";
+
+  acceptedAt?: string | null;
+
+  deliveredAt?: string | null;
+
+  cancelledAt?: string | null;
+
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/* =========================================================
+   COMPONENT
+========================================================= */
+
 function DeliveryBoyDashboard() {
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } =
+    useSession();
 
-  const fetchAssignments = async () => {
-    try {
-      setRefreshing(true);
+  const deliveryBoyId =
+    session?.user?.id;
 
-      const result = await axios.get("/api/delivery/get-assignment");
+  /* =======================================================
+     STATE
+  ======================================================= */
 
-      console.log("Assignments:", result.data.assignment);
+  const [orders, setOrders] =
+    useState<Order[]>([]);
 
-      setAssignments(result.data.assignment || []);
-    } catch (error) {
-      console.error("Error fetching assignment:", error);
-    } finally {
+  const [loading, setLoading] =
+    useState(true);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [acceptingId, setAcceptingId] =
+    useState<string | null>(null);
+
+  const [error, setError] =
+    useState("");
+
+  const [socketConnected, setSocketConnected] =
+    useState(false);
+
+  /* =======================================================
+     FETCH ASSIGNMENTS
+  ======================================================= */
+
+  const fetchOrders = useCallback(
+    async (showLoader = false) => {
+      if (!deliveryBoyId) {
+        return;
+      }
+
+      try {
+        if (showLoader) {
+          setRefreshing(true);
+        }
+
+        setError("");
+
+        const response = await axios.get(
+          "/api/delivery/get-assignment",
+          {
+            timeout: 10000,
+          },
+        );
+
+        console.log(
+          "📦 Delivery API response:",
+          response.data,
+        );
+
+        /*
+         * Backend returns:
+         *
+         * {
+         *   assignment: [...]
+         * }
+         *
+         * NOT:
+         *
+         * {
+         *   orders: [...]
+         * }
+         */
+
+        const assignments: DeliveryAssignment[] =
+          Array.isArray(
+            response.data?.assignment,
+          )
+            ? response.data.assignment
+            : [];
+
+        /*
+         * Convert assignments → orders
+         *
+         * Only broadcasted assignments should
+         * appear in the available-orders list.
+         */
+
+        const availableOrders: Order[] =
+          assignments
+            .filter(
+              (assignment) =>
+                assignment.status ===
+                  "broadcasted" &&
+                !!assignment.order,
+            )
+            .map((assignment) => {
+              const order =
+                assignment.order as Order;
+
+              return {
+                ...order,
+
+                /*
+                 * IMPORTANT:
+                 * Keep the assignment ID.
+                 */
+
+                assignment:
+                  assignment._id,
+
+                /*
+                 * Nobody has accepted yet.
+                 */
+
+                assignedDeliveryBoy:
+                  assignment.assignedTo ??
+                  null,
+              };
+            });
+
+        console.log(
+          "✅ Available delivery orders:",
+          availableOrders,
+        );
+
+        setOrders(availableOrders);
+      } catch (error: unknown) {
+        console.error(
+          "❌ Fetch delivery orders error:",
+          error,
+        );
+
+        if (
+          axios.isAxiosError(error)
+        ) {
+          setError(
+            error.response?.data
+              ?.message ||
+              error.response?.data
+                ?.error ||
+              "Failed to load available deliveries.",
+          );
+        } else {
+          setError(
+            "Failed to load available deliveries.",
+          );
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [deliveryBoyId],
+  );
+
+  /* =======================================================
+     INITIAL FETCH
+  ======================================================= */
+
+  useEffect(() => {
+    if (sessionStatus === "loading") {
+      return;
+    }
+
+    if (!deliveryBoyId) {
       setLoading(false);
-      setRefreshing(false);
+      return;
+    }
+
+    fetchOrders();
+  }, [
+    deliveryBoyId,
+    sessionStatus,
+    fetchOrders,
+  ]);
+
+  /* =======================================================
+     SOCKET.IO
+  ======================================================= */
+
+  useEffect(() => {
+    if (!deliveryBoyId) {
+      return;
+    }
+
+    console.log(
+      "🔌 Initializing delivery socket:",
+      deliveryBoyId,
+    );
+
+    const socket =
+      getSocket(deliveryBoyId);
+
+    /* -----------------------------------------------
+       CONNECT
+    ------------------------------------------------ */
+
+    const handleConnect = () => {
+      console.log(
+        "✅ Delivery socket connected:",
+        socket.id,
+      );
+
+      setSocketConnected(true);
+
+      /*
+       * Your socket server expects:
+       *
+       * socket.on("identity", userId)
+       */
+
+      socket.emit(
+        "identity",
+        deliveryBoyId,
+      );
+
+      /*
+       * Refresh once after connecting.
+       * This protects against missing an event
+       * while the page was loading.
+       */
+
+      fetchOrders();
+    };
+
+    /* -----------------------------------------------
+       DISCONNECT
+    ------------------------------------------------ */
+
+    const handleDisconnect = (
+      reason: string,
+    ) => {
+      console.log(
+        "❌ Delivery socket disconnected:",
+        reason,
+      );
+
+      setSocketConnected(false);
+    };
+
+    /* -----------------------------------------------
+       CONNECT ERROR
+    ------------------------------------------------ */
+
+    const handleConnectError = (
+     error: Error,
+    ) => {
+      console.error(
+        "❌ Socket connection error:",
+        error,
+      );
+
+      setSocketConnected(false);
+    };
+
+    /* -----------------------------------------------
+       NEW ASSIGNMENT
+    ------------------------------------------------ */
+
+    const handleNewAssignment = (
+      data: unknown,
+    ) => {
+      console.log(
+        "📦 NEW DELIVERY ASSIGNMENT RECEIVED:",
+        data,
+      );
+
+      /*
+       * Don't trust socket payload as the source
+       * of truth.
+       *
+       * Fetch the latest MongoDB state.
+       */
+
+      fetchOrders();
+    };
+
+    /* -----------------------------------------------
+       ORDER ACCEPTED BY SOMEONE ELSE
+    ------------------------------------------------ */
+
+    const handleOrderAccepted = (
+      data: unknown,
+    ) => {
+      console.log(
+        "🚚 ORDER ACCEPTED EVENT:",
+        data,
+      );
+
+      /*
+       * Refresh because another delivery boy
+       * may have claimed one of our visible orders.
+       */
+
+      fetchOrders();
+    };
+
+    /* -----------------------------------------------
+       LISTENERS
+    ------------------------------------------------ */
+
+    socket.on(
+      "connect",
+      handleConnect,
+    );
+
+    socket.on(
+      "disconnect",
+      handleDisconnect,
+    );
+
+    socket.on(
+      "connect_error",
+      handleConnectError,
+    );
+
+    socket.on(
+      "new-assignment",
+      handleNewAssignment,
+    );
+
+    socket.on(
+      "order-accepted",
+      handleOrderAccepted,
+    );
+
+    /*
+     * If getSocket() returns an already-connected
+     * socket, connect may already have happened
+     * before our listener was attached.
+     */
+
+    if (socket.connected) {
+      handleConnect();
+    }
+
+    /* -----------------------------------------------
+       CLEANUP
+    ------------------------------------------------ */
+
+    return () => {
+      console.log(
+        "🧹 Cleaning delivery socket listeners",
+      );
+
+      socket.off(
+        "connect",
+        handleConnect,
+      );
+
+      socket.off(
+        "disconnect",
+        handleDisconnect,
+      );
+
+      socket.off(
+        "connect_error",
+        handleConnectError,
+      );
+
+      socket.off(
+        "new-assignment",
+        handleNewAssignment,
+      );
+
+      socket.off(
+        "order-accepted",
+        handleOrderAccepted,
+      );
+    };
+  }, [
+    deliveryBoyId,
+    fetchOrders,
+  ]);
+
+  /* =======================================================
+     ACCEPT ORDER
+  ======================================================= */
+
+  const handleAccept = async (
+    orderId: string,
+  ) => {
+    if (
+      acceptingId ||
+      !deliveryBoyId
+    ) {
+      return;
+    }
+
+    try {
+      setAcceptingId(orderId);
+      setError("");
+
+      console.log(
+        "🚚 Accepting order:",
+        orderId,
+      );
+
+      /*
+       * Your earlier backend accept route
+       * uses POST.
+       *
+       * Therefore use POST here.
+       */
+
+      const response =
+        await axios.post(
+          `/api/delivery/orders/${orderId}/accept`,
+          {},
+          {
+            timeout: 10000,
+          },
+        );
+
+      console.log(
+        "✅ Order accepted:",
+        response.data,
+      );
+
+      /*
+       * Immediately remove it from UI.
+       */
+
+      setOrders(
+        (previousOrders) =>
+          previousOrders.filter(
+            (order) =>
+              order._id !== orderId,
+          ),
+      );
+
+      /*
+       * Then confirm the actual database
+       * state.
+       */
+
+      await fetchOrders();
+    } catch (error: unknown) {
+      console.error(
+        "❌ Accept order error:",
+        error,
+      );
+
+      let message =
+        "This delivery is no longer available.";
+
+      if (
+        axios.isAxiosError(error)
+      ) {
+        message =
+          error.response?.data
+            ?.message ||
+          error.response?.data
+            ?.error ||
+          message;
+      }
+
+      setError(message);
+
+      /*
+       * Another delivery boy may have accepted
+       * the order first.
+       */
+
+      await fetchOrders();
+    } finally {
+      setAcceptingId(null);
     }
   };
 
-useEffect(() => {
-  if (!session?.user?.id) return;
+  /* =======================================================
+     AVAILABLE ORDERS
+  ======================================================= */
 
-  fetchAssignments();
-}, [session?.user?.id]);
+  const availableOrders =
+    useMemo(() => {
+      return orders.filter(
+        (order) =>
+          /*
+           * Broadcasted orders have:
+           *
+           * status = out of delivery
+           * assignment = assignment ID
+           * assignedDeliveryBoy = null
+           */
 
+          order.status ===
+            "out of delivery" &&
+          !!order.assignment &&
+          !order.assignedDeliveryBoy,
+      );
+    }, [orders]);
 
-useEffect(() => {
-  console.log("🔐 Session:", session);
-  console.log("👤 User ID:", session?.user?.id);
+  /* =======================================================
+     DATE
+  ======================================================= */
 
-  if (!session?.user?.id) return;
+  const formatDate = (
+    date?: string,
+  ) => {
+    if (!date) {
+      return "Just now";
+    }
 
-  const socket = getSocket(session.user.id);
-
-  console.log("🔌 Socket ID:", socket.id);
-
-  const handleNewAssignment = () => {
-    console.log("📦 NEW ASSIGNMENT RECEIVED!");
-
-    fetchAssignments();
+    try {
+      return new Date(
+        date,
+      ).toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return "Just now";
+    }
   };
 
-  socket.on("new-assignment", handleNewAssignment);
+  /* =======================================================
+     SESSION LOADING
+  ======================================================= */
 
-  return () => {
-    socket.off("new-assignment", handleNewAssignment);
-  };
-}, [session?.user?.id]);
+  if (sessionStatus === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="flex items-center gap-3 rounded-2xl bg-white px-6 py-5 shadow-sm">
+          <Loader2
+            size={22}
+            className="animate-spin text-green-600"
+          />
+
+          <span className="font-medium text-slate-700">
+            Loading delivery dashboard...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  /* =======================================================
+     UI
+  ======================================================= */
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 md:px-8">
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-7xl">
 
-        {/* HEADER */}
+        {/* =================================================
+            HEADER
+        ================================================= */}
+
         <motion.div
-          initial={{ opacity: 0, y: -25 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"
+          initial={{
+            opacity: 0,
+            y: -25,
+          }}
+          animate={{
+            opacity: 1,
+            y: 0,
+          }}
+          transition={{
+            duration: 0.5,
+          }}
+          className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"
         >
           <div>
             <div className="mb-2 flex items-center gap-2">
@@ -108,70 +701,173 @@ useEffect(() => {
             </h1>
 
             <p className="mt-1 text-sm text-slate-500">
-              Manage your delivery assignments
+              Choose an available order and
+              start your delivery
             </p>
           </div>
 
-          {/* ONLINE STATUS */}
-          <motion.div
-            whileHover={{ scale: 1.03 }}
-            className="flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-4 py-2"
-          >
-            <span className="relative flex h-3 w-3">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-green-500" />
-            </span>
+          {/* ONLINE / SOCKET STATUS */}
 
-            <span className="text-sm font-semibold text-green-700">
-              Online
-            </span>
+          <motion.div
+            whileHover={{
+              scale: 1.03,
+            }}
+            className={`flex items-center gap-2 rounded-full border px-4 py-2 ${
+              socketConnected
+                ? "border-green-200 bg-green-50"
+                : "border-red-200 bg-red-50"
+            }`}
+          >
+            {socketConnected ? (
+              <>
+                <span className="relative flex h-3 w-3">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-green-500" />
+                </span>
+
+                <Wifi
+                  size={16}
+                  className="text-green-600"
+                />
+
+                <span className="text-sm font-semibold text-green-700">
+                  Online
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="h-3 w-3 rounded-full bg-red-500" />
+
+                <WifiOff
+                  size={16}
+                  className="text-red-600"
+                />
+
+                <span className="text-sm font-semibold text-red-700">
+                  Connecting...
+                </span>
+              </>
+            )}
           </motion.div>
         </motion.div>
 
-        {/* STATS */}
+        {/* =================================================
+            ERROR
+        ================================================= */}
+
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{
+                opacity: 0,
+                y: -10,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              exit={{
+                opacity: 0,
+                y: -10,
+              }}
+              className="mb-6 flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700"
+            >
+              <AlertCircle size={20} />
+
+              <p className="text-sm font-medium">
+                {error}
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* =================================================
+            STATS
+        ================================================= */}
+
         <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
 
+          {/* AVAILABLE */}
+
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="rounded-2xl border bg-white p-4"
+            initial={{
+              opacity: 0,
+              y: 20,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            transition={{
+              delay: 0.1,
+            }}
+            className="rounded-2xl border bg-white p-4 shadow-sm"
           >
-            <Package className="mb-3 text-blue-500" size={24} />
+            <Package
+              className="mb-3 text-blue-500"
+              size={24}
+            />
 
             <p className="text-sm text-slate-500">
-              New Assignments
+              Available Orders
             </p>
 
             <p className="mt-1 text-2xl font-bold text-slate-900">
-              {assignments.length}
+              {availableOrders.length}
             </p>
           </motion.div>
 
+          {/* PENDING */}
+
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="rounded-2xl border bg-white p-4"
+            initial={{
+              opacity: 0,
+              y: 20,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            transition={{
+              delay: 0.2,
+            }}
+            className="rounded-2xl border bg-white p-4 shadow-sm"
           >
-            <Clock className="mb-3 text-orange-500" size={24} />
+            <Clock
+              className="mb-3 text-orange-500"
+              size={24}
+            />
 
             <p className="text-sm text-slate-500">
               Pending
             </p>
 
             <p className="mt-1 text-2xl font-bold text-slate-900">
-              {assignments.length}
+              {availableOrders.length}
             </p>
           </motion.div>
 
+          {/* COMPLETED */}
+
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="rounded-2xl border bg-white p-4"
+            initial={{
+              opacity: 0,
+              y: 20,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            transition={{
+              delay: 0.3,
+            }}
+            className="rounded-2xl border bg-white p-4 shadow-sm"
           >
-            <CheckCircle2 className="mb-3 text-green-500" size={24} />
+            <CheckCircle2
+              className="mb-3 text-green-500"
+              size={24}
+            />
 
             <p className="text-sm text-slate-500">
               Completed
@@ -182,13 +878,26 @@ useEffect(() => {
             </p>
           </motion.div>
 
+          {/* EARNINGS */}
+
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="rounded-2xl border bg-white p-4"
+            initial={{
+              opacity: 0,
+              y: 20,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            transition={{
+              delay: 0.4,
+            }}
+            className="rounded-2xl border bg-white p-4 shadow-sm"
           >
-            <IndianRupee className="mb-3 text-emerald-500" size={24} />
+            <IndianRupee
+              className="mb-3 text-emerald-500"
+              size={24}
+            />
 
             <p className="text-sm text-slate-500">
               Earnings
@@ -198,100 +907,142 @@ useEffect(() => {
               ₹0
             </p>
           </motion.div>
-
         </div>
 
-        {/* ASSIGNMENT SECTION */}
+        {/* =================================================
+            TITLE
+        ================================================= */}
+
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
+          initial={{
+            opacity: 0,
+          }}
+          animate={{
+            opacity: 1,
+          }}
+          transition={{
+            delay: 0.4,
+          }}
+          className="mb-4 flex items-center justify-between"
         >
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">
-                New Deliveries
-              </h2>
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">
+              Available Deliveries
+            </h2>
 
-              <p className="text-sm text-slate-500">
-                Pick up a delivery and start earning
-              </p>
-            </div>
-
-            <button
-              onClick={fetchAssignments}
-              disabled={refreshing}
-              className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
-            >
-              <RefreshCw
-                size={16}
-                className={refreshing ? "animate-spin" : ""}
-              />
-
-              Refresh
-            </button>
+            <p className="text-sm text-slate-500">
+              Choose any order that you want to
+              deliver
+            </p>
           </div>
 
-          {/* LOADING */}
-          {loading ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              {[1, 2].map((item) => (
+          <button
+            onClick={() =>
+              fetchOrders(true)
+            }
+            disabled={refreshing}
+            className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw
+              size={16}
+              className={
+                refreshing
+                  ? "animate-spin"
+                  : ""
+              }
+            />
+
+            Refresh
+          </button>
+        </motion.div>
+
+        {/* =================================================
+            LOADING
+        ================================================= */}
+
+        {loading ? (
+          <div className="grid gap-5 md:grid-cols-2">
+            {[1, 2, 3, 4].map(
+              (item) => (
                 <motion.div
                   key={item}
-                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  animate={{
+                    opacity: [
+                      0.5,
+                      1,
+                      0.5,
+                    ],
+                  }}
                   transition={{
                     duration: 1.5,
                     repeat: Infinity,
                   }}
-                  className="h-52 rounded-2xl bg-white"
+                  className="h-72 rounded-3xl bg-white"
                 />
-              ))}
-            </div>
-          ) : assignments.length === 0 ? (
+              ),
+            )}
+          </div>
+        ) : availableOrders.length ===
+          0 ? (
+          /* =================================================
+             EMPTY
+          ================================================= */
 
-            /* EMPTY STATE */
+          <motion.div
+            initial={{
+              opacity: 0,
+              scale: 0.95,
+            }}
+            animate={{
+              opacity: 1,
+              scale: 1,
+            }}
+            className="rounded-3xl border border-dashed bg-white px-6 py-14 text-center"
+          >
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="rounded-3xl border border-dashed bg-white px-6 py-14 text-center"
+              animate={{
+                y: [0, -8, 0],
+                rotate: [
+                  0,
+                  -3,
+                  3,
+                  0,
+                ],
+              }}
+              transition={{
+                duration: 2.5,
+                repeat: Infinity,
+              }}
+              className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-green-100 text-green-600"
             >
-              <motion.div
-                animate={{
-                  y: [0, -8, 0],
-                  rotate: [0, -3, 3, 0],
-                }}
-                transition={{
-                  duration: 2.5,
-                  repeat: Infinity,
-                }}
-                className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-green-100 text-green-600"
-              >
-                <Bike size={32} />
-              </motion.div>
-
-              <h3 className="text-lg font-bold text-slate-900">
-                No new deliveries
-              </h3>
-
-              <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
-                You're all caught up! New delivery requests will
-                appear here automatically.
-              </p>
-
-              <div className="mt-5 flex items-center justify-center gap-2 text-sm text-green-600">
-                <Sparkles size={16} />
-                Stay online to receive orders
-              </div>
+              <Bike size={32} />
             </motion.div>
 
-          ) : (
+            <h3 className="text-lg font-bold text-slate-900">
+              No available deliveries
+            </h3>
 
-            /* ASSIGNMENT CARDS */
-            <div className="grid gap-5 md:grid-cols-2">
+            <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+              New orders will appear here
+              automatically when they become
+              available.
+            </p>
 
-              <AnimatePresence>
-                {assignments.map((item, index) => (
+            <div className="mt-5 flex items-center justify-center gap-2 text-sm text-green-600">
+              <Sparkles size={16} />
 
+              Stay online to receive orders
+            </div>
+          </motion.div>
+        ) : (
+          /* =================================================
+             ORDERS
+          ================================================= */
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <AnimatePresence>
+              {availableOrders.map(
+                (item, index) => (
                   <motion.div
                     key={item._id}
                     initial={{
@@ -309,112 +1060,223 @@ useEffect(() => {
                       scale: 0.9,
                     }}
                     transition={{
-                      delay: index * 0.1,
+                      delay:
+                        index * 0.05,
                       duration: 0.4,
                     }}
                     whileHover={{
                       y: -5,
                     }}
-                    className="group overflow-hidden rounded-3xl border bg-white transition-shadow hover:shadow-xl"
+                    className="group overflow-hidden rounded-3xl border bg-white shadow-sm transition-shadow hover:shadow-xl"
                   >
+                    {/* HEADER */}
 
-                    {/* CARD TOP */}
                     <div className="flex items-center justify-between border-b px-5 py-4">
-
                       <div className="flex items-center gap-3">
-
                         <div className="rounded-xl bg-green-100 p-2.5 text-green-600">
                           <Package size={20} />
                         </div>
 
                         <div>
                           <p className="text-xs text-slate-400">
-                            Assignment
+                            Order
                           </p>
 
                           <p className="font-bold text-slate-900">
-                            #{item._id.slice(-6).toUpperCase()}
+                            #
+                            {(
+                              item.orderRequestId ||
+                              item._id
+                            )
+                              .slice(-8)
+                              .toUpperCase()}
                           </p>
                         </div>
-
                       </div>
 
-                      <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-600">
-                        {item.status}
+                      <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold capitalize text-orange-600">
+                        Out for delivery
                       </span>
-
                     </div>
 
-                    {/* CARD BODY */}
+                    {/* BODY */}
+
                     <div className="space-y-4 p-5">
 
-                      {/* LOCATION */}
-                      <div className="flex gap-3">
+                      {/* CUSTOMER */}
 
-                        <div className="mt-1 rounded-lg bg-blue-100 p-2 text-blue-600">
-                          <MapPin size={18} />
+                      <div className="flex gap-3">
+                        <div className="mt-1 rounded-lg bg-purple-100 p-2 text-purple-600">
+                          <ShoppingBag
+                            size={18}
+                          />
                         </div>
 
-                        <div>
+                        <div className="min-w-0">
+                          <p className="text-xs text-slate-400">
+                            Customer
+                          </p>
+
+                          <p className="mt-1 font-semibold text-slate-800">
+                            {
+                              item.address
+                                .fullName
+                            }
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* ADDRESS */}
+
+                      <div className="flex gap-3">
+                        <div className="mt-1 rounded-lg bg-blue-100 p-2 text-blue-600">
+                          <MapPin
+                            size={18}
+                          />
+                        </div>
+
+                        <div className="min-w-0">
                           <p className="text-xs text-slate-400">
                             Delivery Address
                           </p>
 
-                          <p className="mt-1 line-clamp-2 text-sm font-medium text-slate-800">
-                            {item.order?.deliveryAddress ||
-                              "Address not available"}
+                          <p className="mt-1 line-clamp-3 text-sm font-medium text-slate-800">
+                            {
+                              item.address
+                                .fullAddress
+                            }
+                            ,{" "}
+                            {
+                              item.address
+                                .city
+                            }
+                            ,{" "}
+                            {
+                              item.address
+                                .state
+                            }{" "}
+                            -{" "}
+                            {
+                              item.address
+                                .pincode
+                            }
                           </p>
                         </div>
+                      </div>
 
+                      {/* PHONE */}
+
+                      <div className="flex gap-3">
+                        <div className="mt-1 rounded-lg bg-green-100 p-2 text-green-600">
+                          <Phone
+                            size={18}
+                          />
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-400">
+                            Customer Mobile
+                          </p>
+
+                          <p className="mt-1 text-sm font-semibold text-slate-800">
+                            {
+                              item.address
+                                .mobile
+                            }
+                          </p>
+                        </div>
                       </div>
 
                       {/* ORDER INFO */}
-                      <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-4">
 
-                        <div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-2xl bg-slate-50 p-4">
                           <p className="text-xs text-slate-400">
                             Order Total
                           </p>
 
                           <p className="mt-1 text-lg font-bold text-slate-900">
-                            ₹{item.order?.totalAmount || 0}
+                            ₹
+                            {
+                              item.totalAmount
+                            }
                           </p>
                         </div>
 
-                        <div className="text-right">
+                        <div className="rounded-2xl bg-slate-50 p-4">
                           <p className="text-xs text-slate-400">
-                            Delivery
+                            Payment
                           </p>
 
-                          <p className="mt-1 font-semibold text-green-600">
-                            Available
+                          <p className="mt-1 font-semibold capitalize text-green-600">
+                            {
+                              item.paymentMethod
+                            }
                           </p>
                         </div>
-
                       </div>
 
-                      {/* BUTTON */}
+                      {/* TIME */}
+
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <Clock size={14} />
+
+                        {formatDate(
+                          item.createdAt,
+                        )}
+                      </div>
+
+                      {/* ACCEPT */}
+
                       <motion.button
-                        whileTap={{ scale: 0.97 }}
-                        whileHover={{ scale: 1.01 }}
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-green-600 px-5 py-3 font-semibold text-white transition hover:bg-green-700"
+                        whileTap={{
+                          scale: 0.97,
+                        }}
+                        whileHover={{
+                          scale:
+                            acceptingId ===
+                            item._id
+                              ? 1
+                              : 1.01,
+                        }}
+                        onClick={() =>
+                          handleAccept(
+                            item._id,
+                          )
+                        }
+                        disabled={
+                          acceptingId !==
+                          null
+                        }
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-green-600 px-5 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        <Navigation size={18} />
+                        {acceptingId ===
+                        item._id ? (
+                          <>
+                            <Loader2
+                              size={18}
+                              className="animate-spin"
+                            />
 
-                        Accept Delivery
+                            Accepting...
+                          </>
+                        ) : (
+                          <>
+                            <Navigation
+                              size={18}
+                            />
+
+                            Accept Delivery
+                          </>
+                        )}
                       </motion.button>
-
                     </div>
-
                   </motion.div>
-
-                ))}
-              </AnimatePresence>
-
-            </div>
-          )}
-
-        </motion.div>
+                ),
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -8,32 +8,39 @@ import crypto from "crypto";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ orderId: string }> }
+  {
+    params,
+  }: {
+    params: Promise<{ orderId: string }>;
+  },
 ) {
   try {
     await connectDB();
 
-    // =========================
-    // GET PARAMS
-    // =========================
+    // ============================================
+    // PARAMS
+    // ============================================
 
     const { orderId } = await params;
     const { status } = await req.json();
 
+    console.log("========================================");
     console.log("========== UPDATE ORDER STATUS ==========");
     console.log("Order ID:", orderId);
     console.log("New Status:", status);
+    console.log("========================================");
 
-    // =========================
+    // ============================================
     // VALIDATION
-    // =========================
+    // ============================================
 
     if (!orderId || !status) {
       return NextResponse.json(
         {
+          success: false,
           error: "orderId and status are required",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -46,346 +53,372 @@ export async function POST(
     if (!allowedStatuses.includes(status)) {
       return NextResponse.json(
         {
+          success: false,
           error: "Invalid order status",
           allowedStatuses,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // =========================
+    // ============================================
     // FIND ORDER
-    // =========================
+    // ============================================
 
-    const order = await Order.findById(orderId).populate("user");
+    const order = await Order.findById(orderId);
 
     if (!order) {
       return NextResponse.json(
         {
+          success: false,
           error: "Order not found",
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
-    console.log("✅ Order found:", order._id);
+    console.log("Order found:", order._id);
     console.log("Current status:", order.status);
+    console.log("Requested status:", status);
 
-    // =========================
-    // FIX OLD ORDERS
-    // =========================
+    // ============================================
+    // OLD ORDER FIX
+    // ============================================
 
     if (!order.orderRequestId) {
-      order.orderRequestId = `ORD-${Date.now()}-${crypto
-        .randomBytes(4)
-        .toString("hex")}`;
+      order.orderRequestId =
+        `ORD-${Date.now()}-${crypto
+          .randomBytes(4)
+          .toString("hex")}`;
+
+      await order.save();
 
       console.log(
-        "🆕 Generated missing orderRequestId:",
-        order.orderRequestId
+        "Generated orderRequestId:",
+        order.orderRequestId,
       );
     }
 
-    // =========================
-    // UPDATE STATUS
-    // =========================
+    // ============================================
+    // DELIVERED ORDER PROTECTION
+    // ============================================
 
-    order.status = status;
+    if (
+      order.status === "delivered" &&
+      status !== "delivered"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "A delivered order cannot be moved backwards.",
+        },
+        { status: 400 },
+      );
+    }
 
-    // =====================================================
+    // ============================================
     // OUT OF DELIVERY
-    // =====================================================
+    // ============================================
 
-    if (status === "out of delivery" && !order.assignment) {
-      console.log("🚚 Starting delivery assignment...");
-
-      const { latitude, longitude } = order.address;
-
-      // =========================
-      // CHECK LOCATION
-      // =========================
-
-      if (
-        latitude === undefined ||
-        longitude === undefined ||
-        latitude === null ||
-        longitude === null
-      ) {
-        return NextResponse.json(
-          {
-            error: "Order location is missing",
-          },
-          { status: 400 }
-        );
-      }
-
-      console.log("📍 Order location:", {
-        latitude,
-        longitude,
-      });
-
-      // =========================
-      // FIND NEARBY DELIVERY BOYS
-      // =========================
-
-      const nearbyDeliveryBoys = await User.find({
-        role: "deliveryBoy",
-        isOnline: true,
-        location: {
-          $near: {
-            $geometry: {
-              type: "Point",
-              coordinates: [longitude, latitude],
-            },
-            $maxDistance: 15000,
-          },
-        },
-      });
-
+    if (status === "out of delivery") {
       console.log(
-        "🚴 Nearby delivery boys:",
-        nearbyDeliveryBoys.length
+        "🚚 Making order available to delivery boys...",
       );
 
-      // =========================
-      // NO DELIVERY BOY
-      // =========================
+      // ------------------------------------------
+      // CHECK EXISTING ACTIVE ASSIGNMENT
+      // ------------------------------------------
 
-      if (nearbyDeliveryBoys.length === 0) {
-        await order.save();
+      const existingAssignment =
+        await DeliveryAssignment.findOne({
+          order: order._id,
+          status: {
+            $in: ["broadcasted", "assigned"],
+          },
+        });
 
+      if (existingAssignment) {
         console.log(
-          "⚠️ No available delivery boy nearby"
+          "Active assignment already exists:",
+          existingAssignment._id,
         );
 
-        return NextResponse.json(
-          {
-            message:
-              "Order status updated, but no available delivery boy nearby",
-            orderId: order._id,
-            status: order.status,
-          },
-          { status: 200 }
-        );
-      }
+        order.status = "out of delivery";
+        order.assignment =
+          existingAssignment._id;
 
-      // =========================
-      // GET DELIVERY BOY IDS
-      // =========================
+        order.assignedDeliveryBoy =
+          existingAssignment.assignedTo || null;
 
-      const nearbyIds = nearbyDeliveryBoys.map(
-        (boy) => boy._id
-      );
-
-      // =========================
-      // FIND BUSY DELIVERY BOYS
-      // =========================
-
-      const busyIds = await DeliveryAssignment.find({
-        assignedTo: {
-          $in: nearbyIds,
-        },
-        status: {
-          $in: ["assigned", "pending"],
-        },
-      }).distinct("assignedTo");
-
-      const busyIdSet = new Set(
-        busyIds.map((id) => id.toString())
-      );
-
-      // =========================
-      // AVAILABLE DELIVERY BOYS
-      // =========================
-
-      const availableDeliveryBoys =
-        nearbyDeliveryBoys.filter(
-          (boy) =>
-            !busyIdSet.has(boy._id.toString())
-        );
-
-      console.log(
-        "✅ Available delivery boys:",
-        availableDeliveryBoys.length
-      );
-
-      // =========================
-      // NO AVAILABLE BOY
-      // =========================
-
-      if (availableDeliveryBoys.length === 0) {
         await order.save();
 
         return NextResponse.json(
           {
+            success: true,
             message:
-              "Order status updated, but no available delivery boy nearby",
-            orderId: order._id,
-            status: order.status,
+              existingAssignment.status ===
+              "assigned"
+                ? "Order is already assigned"
+                : "Order is already available",
+            order,
+            assignment: existingAssignment,
           },
-          { status: 200 }
+          { status: 200 },
         );
       }
 
-      // =========================
-      // SELECT DELIVERY BOY
-      // =========================
+      // ------------------------------------------
+      // FIND ALL DELIVERY BOYS
+      // ------------------------------------------
+      //
+      // NO:
+      // $near
+      // isOnline
+      // socketId
+      // busy filtering
+      //
+      // Every delivery boy can see the order.
+      //
 
-      const selectedDeliveryBoy =
-        availableDeliveryBoys[0];
+      const deliveryBoys =
+        await User.find({
+          role: "deliveryBoy",
+        }).select(
+          "_id name email mobile socketId isOnline",
+        );
 
       console.log(
-        "👤 Selected delivery boy:",
-        selectedDeliveryBoy._id
+        "Total delivery boys:",
+        deliveryBoys.length,
       );
 
-      console.log(
-        "🔌 Socket ID:",
-        selectedDeliveryBoy.socketId
-      );
+      // ------------------------------------------
+      // NO DELIVERY BOYS
+      // ------------------------------------------
 
-      // =========================
-      // CREATE ASSIGNMENT
-      // =========================
+      if (deliveryBoys.length === 0) {
+        order.status = "out of delivery";
+        order.assignment = null;
+        order.assignedDeliveryBoy = null;
+
+        await order.save();
+
+        return NextResponse.json(
+          {
+            success: true,
+            message:
+              "Order marked out for delivery, but no delivery boys are registered.",
+            order,
+          },
+          { status: 200 },
+        );
+      }
+
+      // ------------------------------------------
+      // ALL DELIVERY BOY IDS
+      // ------------------------------------------
+
+      const deliveryBoyIds =
+        deliveryBoys.map(
+          (boy) => boy._id,
+        );
+
+      // ------------------------------------------
+      // CREATE BROADCAST ASSIGNMENT
+      // ------------------------------------------
 
       const deliveryAssignment =
         await DeliveryAssignment.create({
           order: order._id,
-          assignedTo: selectedDeliveryBoy._id,
-          status: "assigned",
+
+          broadcastedTo:
+            deliveryBoyIds,
+
+          assignedTo: null,
+
+          status: "broadcasted",
+
+          acceptedAt: null,
         });
 
       console.log(
-        "✅ Assignment created:",
-        deliveryAssignment._id
+        "Broadcast assignment created:",
+        deliveryAssignment._id,
       );
 
-      // =========================
-      // ATTACH ASSIGNMENT TO ORDER
-      // =========================
+      // ------------------------------------------
+      // UPDATE ORDER
+      // ------------------------------------------
+
+      order.status = "out of delivery";
 
       order.assignment =
         deliveryAssignment._id;
 
-      order.assignedDeliveryBoy =
-        selectedDeliveryBoy._id;
-
-      // =========================
-      // SAVE ORDER
-      // =========================
+      order.assignedDeliveryBoy = null;
 
       await order.save();
 
-      console.log("✅ Order saved successfully");
+      console.log(
+        "Order saved successfully",
+      );
 
-      // =========================
-      // NOTIFY DELIVERY BOY
-      // =========================
+      // ------------------------------------------
+      // SOCKET NOTIFICATION
+      // ------------------------------------------
 
-      if (selectedDeliveryBoy.socketId) {
-        console.log(
-          "📢 Sending new-assignment notification..."
-        );
+      const notificationData = {
+        assignmentId:
+          deliveryAssignment._id.toString(),
 
-        await emitEventHandler(
-          "new-assignment",
-          {
-            assignmentId:
-              deliveryAssignment._id.toString(),
+        orderId:
+          order._id.toString(),
 
-            orderId:
-              order._id.toString(),
+        orderRequestId:
+          order.orderRequestId,
 
-            status: "assigned",
-          },
-          selectedDeliveryBoy.socketId
-        );
+        status: "broadcasted",
 
-        console.log(
-          "✅ Notification request sent"
-        );
-      } else {
-        console.log(
-          "⚠️ Delivery boy has no socketId"
-        );
+        message:
+          "New delivery order available",
+      };
+
+      /*
+       * Socket notification only goes to
+       * currently connected users.
+       *
+       * But broadcastedTo contains EVERY
+       * delivery boy, so offline users can
+       * still see the order when they open
+       * the dashboard.
+       */
+
+      for (const deliveryBoy of deliveryBoys) {
+        if (!deliveryBoy.socketId) {
+          continue;
+        }
+
+        try {
+          await emitEventHandler(
+            "new-assignment",
+            notificationData,
+            deliveryBoy.socketId,
+          );
+        } catch (socketError) {
+          console.error(
+            "Socket notification failed:",
+            deliveryBoy._id,
+            socketError,
+          );
+        }
       }
 
-      // =========================
-      // POPULATE
-      // =========================
-
-      await deliveryAssignment.populate("order");
-
-      await order.populate("user");
-
-      // =========================
+      // ------------------------------------------
       // RESPONSE
-      // =========================
+      // ------------------------------------------
 
       return NextResponse.json(
         {
+          success: true,
+
           message:
-            "Order status updated and delivery boy assigned",
+            "Order is now available to all delivery boys",
 
           orderId: order._id,
 
+          orderRequestId:
+            order.orderRequestId,
+
           status: order.status,
 
-          assignment: deliveryAssignment,
+          assignment:
+            deliveryAssignment,
 
-          assignedDeliveryBoy: {
-            id: selectedDeliveryBoy._id,
-            name: selectedDeliveryBoy.name,
-            email: selectedDeliveryBoy.email,
-            mobile: selectedDeliveryBoy.phone,
-            socketId:
-              selectedDeliveryBoy.socketId,
-          },
+          broadcastedTo:
+            deliveryBoys.map((boy) => ({
+              id: boy._id,
+              name: boy.name,
+              email: boy.email,
+              mobile: boy.mobile,
+              isOnline: boy.isOnline,
+            })),
         },
-        { status: 200 }
+        { status: 200 },
       );
     }
 
-    // =====================================================
-    // NORMAL STATUS UPDATE
-    // =====================================================
+    // ============================================
+    // DELIVERED
+    // ============================================
+
+    if (status === "delivered") {
+      order.status = "delivered";
+
+      /*
+       * If an assignment exists, mark it delivered.
+       */
+      if (order.assignment) {
+        await DeliveryAssignment.findByIdAndUpdate(
+          order.assignment,
+          {
+            $set: {
+              status: "delivered",
+              deliveredAt: new Date(),
+            },
+          },
+          {
+            returnDocument: "after",
+          },
+        );
+      }
+
+      await order.save();
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Order delivered successfully",
+          order,
+        },
+        { status: 200 },
+      );
+    }
+
+    // ============================================
+    // NORMAL STATUS
+    // ============================================
+
+    order.status = status;
 
     await order.save();
 
-    console.log(
-      "✅ Order status updated successfully"
-    );
-
     return NextResponse.json(
       {
+        success: true,
         message:
           "Order status updated successfully",
-
-        orderId: order._id,
-
-        status: order.status,
-
         order,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error(
       "❌ Update order status error:",
-      error
+      error,
     );
 
     return NextResponse.json(
       {
+        success: false,
         error:
           "Failed to update order status",
-
         details:
           error instanceof Error
             ? error.message
             : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

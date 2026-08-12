@@ -91,6 +91,7 @@ export async function POST(req: NextRequest) {
 
     const newOrder = await Order.create({
       user: userId,
+      orderRequestId,
       items,
       totalAmount: String(totalAmount),
       paymentMethod,

@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 
-// 1. Define global interface for Mongoose cache to eliminate TS errors without using `any`
 interface MongooseCache {
   conn: typeof mongoose | null;
   promise: Promise<typeof mongoose> | null;
@@ -11,67 +10,72 @@ declare global {
   var mongooseCache: MongooseCache | undefined;
 }
 
-const mongodbUrl = process.env.MONGODB_URL;
+const MONGODB_URL = process.env.MONGODB_URL;
 
-if (!mongodbUrl) {
-  throw new Error("MONGODB_URL is not defined in the environment variables");
+if (!MONGODB_URL) {
+  throw new Error(
+    "MONGODB_URL is not defined in environment variables",
+  );
 }
 
-// 2. Initialize global cache scoped specifically to prevent Dev Server HMR connection leaks
-let cached = global.mongooseCache;
-
-if (!cached) {
-  cached = global.mongooseCache = {
+const cached: MongooseCache =
+  global.mongooseCache ?? {
     conn: null,
     promise: null,
   };
-}
 
-/**
- * Optimized MongoDB Connection Manager for Next.js App Router.
- * Reuses existing active connections, handles connection pooling, and prevents HMR leaks.
- */
+global.mongooseCache = cached;
+
 const connectDB = async (): Promise<typeof mongoose> => {
-  // Check if Mongoose is already connected via readyState (1 = connected, 2 = connecting)
-  if (mongoose.connection.readyState === 1 && cached.conn) {
+  // Already connected
+  if (
+    cached.conn &&
+    mongoose.connection.readyState === 1
+  ) {
     return cached.conn;
   }
 
-  // If a connection is already established in cache, return it
-  if (cached.conn) {
-    return cached.conn;
+  // Connection is currently being established
+  if (cached.promise) {
+    return cached.promise;
   }
 
-  // If a connection attempt is in progress, await the existing promise
-  if (!cached.promise) {
-    const opts: mongoose.ConnectOptions = {
-      bufferCommands: false, // Prevents queries from hanging indefinitely if connection drops
-      maxPoolSize: 10,       // Optimized pool size for serverless/edge request concurrency
-      serverSelectionTimeoutMS: 5000, // Timeout fast (5s) instead of stalling server response
-      socketTimeoutMS: 45000, // Close idle sockets after 45s
-    };
+  console.log("🔌 Creating MongoDB connection...");
 
-    cached.promise = mongoose
-      .connect(mongodbUrl, opts)
-      .then((mongooseInstance) => {
-        return mongooseInstance;
-      })
-      .catch((err) => {
-        // Reset cached promise on failure so subsequent requests can retry
-        cached.promise = null;
-        console.error("❌ MongoDB connection error:", err.message || err);
-        throw new Error("Failed to connect to MongoDB database.");
-      });
-  }
+  cached.promise = mongoose
+    .connect(MONGODB_URL, {
+      bufferCommands: false,
 
-  try {
-    cached.conn = await cached.promise;
-    return cached.conn;
-  } catch (error) {
-    cached.promise = null;
-    cached.conn = null;
-    throw error;
-  }
+      // Connection pool
+      maxPoolSize: 10,
+      minPoolSize: 2,
+
+      // Don't wait forever when MongoDB is unavailable
+      serverSelectionTimeoutMS: 5000,
+
+      // Socket timeout
+      socketTimeoutMS: 45000,
+    })
+    .then((mongooseInstance) => {
+      console.log("✅ MongoDB connected");
+
+      cached.conn = mongooseInstance;
+
+      return mongooseInstance;
+    })
+    .catch((error) => {
+      console.error(
+        "❌ MongoDB connection failed:",
+        error,
+      );
+
+      cached.promise = null;
+      cached.conn = null;
+
+      throw error;
+    });
+
+  return cached.promise;
 };
 
 export default connectDB;

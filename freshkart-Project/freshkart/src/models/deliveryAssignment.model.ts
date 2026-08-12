@@ -3,11 +3,15 @@ import mongoose from "mongoose";
 interface IDeliveryAssignment {
   order: mongoose.Types.ObjectId;
 
-  brodcastedTo: mongoose.Types.ObjectId[];
+  broadcastedTo: mongoose.Types.ObjectId[];
 
   assignedTo: mongoose.Types.ObjectId | null;
 
-   status: "pending" | "out of delivery" | "delivered";
+  status:
+    | "broadcasted"
+    | "assigned"
+    | "delivered"
+    | "cancelled";
 
   acceptedAt: Date | null;
   deliveredAt: Date | null;
@@ -26,10 +30,11 @@ const deliveryAssignmentSchema =
         required: true,
       },
 
-      brodcastedTo: [
+      broadcastedTo: [
         {
           type: mongoose.Schema.Types.ObjectId,
           ref: "User",
+          required: true,
         },
       ],
 
@@ -42,12 +47,12 @@ const deliveryAssignmentSchema =
       status: {
         type: String,
         enum: [
-          "pending",
+          "broadcasted",
           "assigned",
           "delivered",
           "cancelled",
         ],
-        default: "pending",
+        default: "broadcasted",
       },
 
       acceptedAt: {
@@ -67,14 +72,14 @@ const deliveryAssignmentSchema =
     },
     {
       timestamps: true,
-    }
+    },
   );
 
 const DeliveryAssignment =
   mongoose.models.DeliveryAssignment ||
   mongoose.model<IDeliveryAssignment>(
     "DeliveryAssignment",
-    deliveryAssignmentSchema
+    deliveryAssignmentSchema,
   );
 
 export default DeliveryAssignment;

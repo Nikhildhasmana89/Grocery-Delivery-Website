@@ -1,86 +1,132 @@
 import { getToken } from "next-auth/jwt";
-import { NextRequest, NextResponse } from "next/server";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
 
-export async function proxy(req: NextRequest) {
+export async function proxy(
+  req: NextRequest,
+) {
   const { pathname } = req.nextUrl;
 
-  // 1. List of paths accessible without authentication
-  const publicRoutes = [
-  "/login",
-  "/register",
-  "/api/auth",
-  "/api/socket",
-];
+  // ============================================
+  // PUBLIC PAGE ROUTES
+  // ============================================
 
-  // Check if current route matches or starts with any public route
-  const isPublicRoute = publicRoutes.some((route) => {
-    if (route === "/") return pathname === "/";
-    return pathname.startsWith(route);
-  });
-
-  if (isPublicRoute) {
+  if (
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/unauthorized" ||
+    pathname === "/edit-role-mobile"
+  ) {
     return NextResponse.next();
   }
 
-  // 2. Safe Secret Resolver (Prevents missing secret error)
-  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  // ============================================
+  // ONLY PROTECT APPLICATION PAGES
+  // ============================================
 
-  if (!secret) {
-    console.error("❌ Auth secret missing in environment variables.");
-    const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(loginUrl);
+  const isProtectedPage =
+    pathname.startsWith("/user") ||
+    pathname.startsWith("/delivery") ||
+    pathname.startsWith("/admin");
+
+  if (!isProtectedPage) {
+    return NextResponse.next();
   }
 
-  // 3. Extract JWT token cleanly
+  // ============================================
+  // AUTHENTICATION
+  // ============================================
+
+  const secret =
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET;
+
+  if (!secret) {
+    console.error(
+      "❌ Auth secret is missing",
+    );
+
+    return NextResponse.redirect(
+      new URL("/login", req.url),
+    );
+  }
+
   const token = await getToken({
     req,
     secret,
-    // Enable secureCookie check for production HTTPS deployment automatically
-    secureCookie: process.env.NODE_ENV === "production",
+    secureCookie:
+      process.env.NODE_ENV === "production",
   });
 
+  // ============================================
+  // NOT LOGGED IN
+  // ============================================
+
   if (!token) {
-    const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
+    const loginUrl = new URL(
+      "/login",
+      req.url,
+    );
+
+    loginUrl.searchParams.set(
+      "callbackUrl",
+      pathname,
+    );
+
     return NextResponse.redirect(loginUrl);
   }
 
-  // Allow users on the role selection route to proceed
-  if (pathname === "/edit-role-mobile") {
-    return NextResponse.next();
+  // ============================================
+  // ROLE
+  // ============================================
+
+  const role =
+    typeof token.role === "string"
+      ? token.role.trim().toLowerCase()
+      : "";
+
+  // ============================================
+  // ROLE PROTECTION
+  // ============================================
+
+  if (
+    pathname.startsWith("/user") &&
+    role !== "user"
+  ) {
+    return NextResponse.redirect(
+      new URL("/unauthorized", req.url),
+    );
   }
 
-  // 4. Case-Insensitive Role Guard Checks
-  const userRole =
-    typeof token.role === "string" ? token.role.trim().toLowerCase() : "";
-  console.log("========== PROXY AUTH ==========");
-  console.log("Path:", pathname);
-  console.log("Token role:", token.role);
-  console.log("Processed role:", userRole);
-  console.log("Token:", token);
-  console.log("================================");
-
-  if (pathname.startsWith("/user") && userRole !== "user") {
-    return NextResponse.redirect(new URL("/unauthorized", req.url));
+  if (
+    pathname.startsWith("/delivery") &&
+    role !== "deliveryboy"
+  ) {
+    return NextResponse.redirect(
+      new URL("/unauthorized", req.url),
+    );
   }
 
-  if (pathname.startsWith("/delivery") && userRole !== "deliveryboy") {
-    return NextResponse.redirect(new URL("/unauthorized", req.url));
-  }
-
-  if (pathname.startsWith("/admin") && userRole !== "admin") {
-    return NextResponse.redirect(new URL("/unauthorized", req.url));
+  if (
+    pathname.startsWith("/admin") &&
+    role !== "admin"
+  ) {
+    return NextResponse.redirect(
+      new URL("/unauthorized", req.url),
+    );
   }
 
   return NextResponse.next();
 }
 
-// ⚠️ Next.js App Router entry point delegating to your proxy function
 export default proxy;
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|css|js)$).*)",
+    "/user/:path*",
+    "/delivery/:path*",
+    "/admin/:path*",
   ],
 };

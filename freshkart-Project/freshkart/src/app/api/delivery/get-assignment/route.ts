@@ -7,36 +7,92 @@ export async function GET() {
   try {
     await connectDB();
 
+    // ============================================
+    // AUTHENTICATION
+    // ============================================
+
     const session = await auth();
 
     if (!session?.user?.id) {
       return NextResponse.json(
         {
-          error: "Unauthorized",
+          success: false,
+          message: "Unauthorized",
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
-    const assignment = await DeliveryAssignment.find({
-      assignedTo: session.user.id,
-      status: "assigned",
-    }).populate("order");
+    const deliveryBoyId = session.user.id;
+
+    console.log("========================================");
+    console.log("GET DELIVERY ASSIGNMENTS");
+    console.log("Delivery Boy:", deliveryBoyId);
+    console.log("========================================");
+
+    // ============================================
+    // GET AVAILABLE + ACCEPTED ASSIGNMENTS
+    // ============================================
+
+    const assignments = await DeliveryAssignment.find({
+      $or: [
+        // ----------------------------------------
+        // AVAILABLE ORDERS
+        // ----------------------------------------
+        {
+          status: "broadcasted",
+          broadcastedTo: deliveryBoyId,
+          assignedTo: null,
+        },
+
+        // ----------------------------------------
+        // ORDERS ALREADY ACCEPTED BY THIS BOY
+        // ----------------------------------------
+        {
+          status: "assigned",
+          assignedTo: deliveryBoyId,
+        },
+      ],
+    })
+      .populate({
+        path: "order",
+        populate: {
+          path: "user",
+          select: "name email mobile",
+        },
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    console.log(
+      "Available/assigned deliveries:",
+      assignments.length,
+    );
+
+    // ============================================
+    // RESPONSE
+    // ============================================
 
     return NextResponse.json(
       {
-        assignment,
+        success: true,
+        assignment: assignments,
+        count: assignments.length,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
-    console.error("Get delivery assignment error:", error);
+    console.error(
+      "❌ Get delivery assignment error:",
+      error,
+    );
 
     return NextResponse.json(
       {
-        error: "Failed to fetch delivery assignment",
+        success: false,
+        message: "Failed to fetch delivery assignments",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
