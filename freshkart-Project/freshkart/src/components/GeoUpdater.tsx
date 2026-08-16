@@ -13,6 +13,10 @@ export default function GeoUpdater({ userId }: GeoUpdateProps) {
 
     const socket = getSocket(userId);
 
+    if (!socket.connected) {
+      socket.connect();
+    }
+
     const handleConnectError = (err: Error) => {
       console.error("❌ Connect Error:", err.message);
     };
@@ -46,11 +50,25 @@ export default function GeoUpdater({ userId }: GeoUpdateProps) {
         });
       },
       (err) => {
-        console.error("❌ Error getting location:", err);
+        let msg = "";
+        switch (err.code) {
+          case err.PERMISSION_DENIED:
+            msg = "Permission denied by user.";
+            break;
+          case err.POSITION_UNAVAILABLE:
+            msg = "Position unavailable.";
+            break;
+          case err.TIMEOUT:
+            msg = "Request timed out.";
+            break;
+          default:
+            msg = err.message || "Unknown error.";
+        }
+        console.warn(`⚠️ Geolocation updater warning: ${msg}`);
       },
       {
         enableHighAccuracy: true,
-        timeout: 5000,
+        timeout: 10000,
         maximumAge: 0,
       }
     );

@@ -111,13 +111,13 @@ export default function HeroSection() {
       x: 0,
       opacity: 1,
       scale: 1,
-      transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] }
+      transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] as const }
     },
     exit: (dir: number) => ({
       x: dir > 0 ? -80 : 80,
       opacity: 0,
       scale: 0.98,
-      transition: { duration: 0.35, ease: [0.7, 0, 0.84, 0] }
+      transition: { duration: 0.35, ease: [0.7, 0, 0.84, 0] as const }
     })
   };
 

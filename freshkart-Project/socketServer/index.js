@@ -32,6 +32,7 @@ io.on("connection", (socket) => {
   console.log("================================");
 
   // =========================
+  // =========================
   // IDENTITY
   // =========================
 
@@ -46,6 +47,9 @@ io.on("connection", (socket) => {
         return;
       }
 
+      // Join user's personal room for persistent messaging
+      socket.join(`user:${userId}`);
+
       const response = await axios.post(
         `${NEXT_BASE_URL}/api/socket/connect`,
         {
@@ -56,11 +60,39 @@ io.on("connection", (socket) => {
 
       console.log("✅ Database Updated");
       console.log(response.data);
+
+      const userRole = response.data?.user?.role;
+      if (
+        userRole === "deliveryBoy" ||
+        userRole === "deliveryboy" ||
+        userRole === "delivery_boy"
+      ) {
+        socket.join("delivery-boys");
+        console.log(`🛵 Socket ${socket.id} joined room "delivery-boys"`);
+      }
+
+      // Notify client that identity registration succeeded
+      socket.emit("identity-confirmed", {
+        success: true,
+        userId,
+        socketId: socket.id,
+      });
+
+      // Optional: notify other clients
+      socket.broadcast.emit("deliveryBoy-online", {
+        userId,
+        socketId: socket.id,
+      });
     } catch (error) {
       console.error(
         "❌ Error updating socket:",
         error.response?.data || error.message
       );
+
+      socket.emit("identity-confirmed", {
+        success: false,
+        message: "Failed to register identity",
+      });
     }
   });
 
@@ -95,6 +127,7 @@ io.on("connection", (socket) => {
           coordinates: [longitude, latitude],
         };
 
+        // Update database
         const response = await axios.post(
           `${NEXT_BASE_URL}/api/socket/update-location`,
           {
@@ -105,6 +138,19 @@ io.on("connection", (socket) => {
 
         console.log("✅ Location updated");
         console.log(response.data);
+
+        // =========================================
+        // BROADCAST LOCATION
+        // =========================================
+
+        io.emit("update-deliveryBoy-location", {
+          userId,
+          location,
+        });
+
+        console.log(
+          "📡 Location broadcasted to connected clients"
+        );
       } catch (error) {
         console.error(
           "❌ Location update API error:",
@@ -118,8 +164,9 @@ io.on("connection", (socket) => {
   // DISCONNECT
   // =========================
 
-  socket.on("disconnect", async () => {
+  socket.on("disconnect", async (reason) => {
     console.log("❌ Client Disconnected:", socket.id);
+    console.log("Reason:", reason);
 
     try {
       const response = await axios.post(
@@ -146,12 +193,13 @@ io.on("connection", (socket) => {
 
 app.post("/notify", (req, res) => {
   try {
-    const { event, data, socketId } =
-      req.body;
+    const { event, data, socketId, userId, room } = req.body;
 
     console.log("\n================================");
     console.log("📢 NOTIFICATION REQUEST");
     console.log("Event:", event);
+    console.log("Target Room:", room);
+    console.log("Target User ID:", userId);
     console.log("Socket ID:", socketId);
     console.log("Data:", data);
     console.log("================================");
@@ -164,6 +212,35 @@ app.post("/notify", (req, res) => {
     }
 
     // =========================================
+    // SEND TO ROOM
+    // =========================================
+    if (room) {
+      io.to(room).emit(event, data);
+      console.log(`✅ Event "${event}" sent to room "${room}"`);
+      return res.status(200).json({
+        success: true,
+        message: `Notification sent to room ${room}`,
+        room,
+        event,
+      });
+    }
+
+    // =========================================
+    // SEND TO USER ROOM
+    // =========================================
+    if (userId) {
+      const userRoom = `user:${userId}`;
+      io.to(userRoom).emit(event, data);
+      console.log(`✅ Event "${event}" sent to user room "${userRoom}"`);
+      return res.status(200).json({
+        success: true,
+        message: `Notification sent to user ${userId}`,
+        userId,
+        event,
+      });
+    }
+
+    // =========================================
     // SEND TO SPECIFIC SOCKET
     // =========================================
 
@@ -171,21 +248,16 @@ app.post("/notify", (req, res) => {
       const targetSocket =
         io.sockets.sockets.get(socketId);
 
-      console.log(
-        "Socket currently connected:",
-        !!targetSocket,
-      );
-
       if (!targetSocket) {
         console.log(
-          "❌ Socket does not exist:",
-          socketId,
+          "⚠️ Socket not currently connected:",
+          socketId
         );
 
-        return res.status(404).json({
-          success: false,
-          message:
-            "Socket is not currently connected",
+        return res.status(200).json({
+          success: true,
+          delivered: false,
+          message: "Socket is not currently connected",
           socketId,
         });
       }
@@ -193,46 +265,52 @@ app.post("/notify", (req, res) => {
       targetSocket.emit(event, data);
 
       console.log(
-        `✅ Event "${event}" sent to socket ${socketId}`,
+        `✅ Event "${event}" sent to socket ${socketId}`
       );
 
       return res.status(200).json({
         success: true,
-        message:
-          "Notification sent successfully",
+        delivered: true,
+        message: "Notification sent successfully",
         socketId,
         event,
       });
     }
 
     // =========================================
-    // BROADCAST
+    // BROADCAST ALL
     // =========================================
 
     io.emit(event, data);
 
     console.log(
-      `📢 Event "${event}" broadcasted`,
+      `📢 Event "${event}" broadcasted`
     );
 
     return res.status(200).json({
       success: true,
-      message:
-        "Notification broadcasted",
+      message: "Notification broadcasted",
       event,
     });
   } catch (error) {
-    console.error(
-      "❌ Notify error:",
-      error,
-    );
+    console.error("❌ Notify error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to send notification",
+      message: "Failed to send notification",
     });
   }
+});
+
+// =========================
+// HEALTH CHECK
+// =========================
+
+app.get("/", (_req, res) => {
+  res.json({
+    success: true,
+    message: "Socket server is running",
+  });
 });
 
 // =========================

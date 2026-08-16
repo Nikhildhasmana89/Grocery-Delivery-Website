@@ -1,6 +1,6 @@
-import mongoose from "mongoose";
+import mongoose, { Schema } from "mongoose";
 
-interface IDeliveryAssignment {
+export interface IDeliveryAssignment {
   order: mongoose.Types.ObjectId;
 
   broadcastedTo: mongoose.Types.ObjectId[];
@@ -22,24 +22,23 @@ interface IDeliveryAssignment {
 }
 
 const deliveryAssignmentSchema =
-  new mongoose.Schema<IDeliveryAssignment>(
+  new Schema<IDeliveryAssignment>(
     {
       order: {
-        type: mongoose.Schema.Types.ObjectId,
+        type: Schema.Types.ObjectId,
         ref: "Order",
         required: true,
       },
 
       broadcastedTo: [
         {
-          type: mongoose.Schema.Types.ObjectId,
+          type: Schema.Types.ObjectId,
           ref: "User",
-          required: true,
         },
       ],
 
       assignedTo: {
-        type: mongoose.Schema.Types.ObjectId,
+        type: Schema.Types.ObjectId,
         ref: "User",
         default: null,
       },
@@ -76,7 +75,7 @@ const deliveryAssignmentSchema =
   );
 
 const DeliveryAssignment =
-  mongoose.models.DeliveryAssignment ||
+  mongoose.models.DeliveryAssignment ??
   mongoose.model<IDeliveryAssignment>(
     "DeliveryAssignment",
     deliveryAssignmentSchema,

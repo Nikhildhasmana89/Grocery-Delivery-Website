@@ -45,6 +45,7 @@ const INITIAL_ROLES = [
 
 type PropType = {
   initialRole?: string;
+  initialMobile?: string;
   userId?: string;
   previousStep?: (s: number) => void;
 };

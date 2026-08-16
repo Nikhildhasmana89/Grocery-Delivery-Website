@@ -1,7 +1,9 @@
 import { auth } from "@/auth";
 import connectDB from "@/lib/db";
+import emitEventHandler from "@/lib/emitEventHandler";
 import DeliveryAssignment from "@/models/deliveryAssignment.model";
 import Order from "@/models/order.model";
+import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
 export async function POST(
@@ -16,7 +18,7 @@ export async function POST(
     await connectDB();
 
     // ============================================
-    // GET ASSIGNMENT ID
+    // GET ASSIGNMENT OR ORDER ID
     // ============================================
 
     const { id } = await params;
@@ -25,7 +27,7 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          message: "Assignment ID is required",
+          message: "Assignment or Order ID is required",
         },
         { status: 400 },
       );
@@ -37,33 +39,41 @@ export async function POST(
 
     const session = await auth();
 
-    const deliveryBoyId =
-      session?.user?.id;
+    const deliveryBoyId = session?.user?.id;
 
-    if (!deliveryBoyId) {
+    if (!deliveryBoyId || !mongoose.Types.ObjectId.isValid(deliveryBoyId)) {
       return NextResponse.json(
         {
           success: false,
-          message: "Unauthorized",
+          message: "Unauthorized or invalid delivery boy session",
         },
         { status: 401 },
       );
     }
 
+    const deliveryBoyObjectId = new mongoose.Types.ObjectId(deliveryBoyId);
+
     console.log("========================================");
     console.log("ACCEPT DELIVERY");
-    console.log("Assignment ID:", id);
+    console.log("Passed ID:", id);
     console.log("Delivery Boy:", deliveryBoyId);
     console.log("========================================");
 
     // ============================================
-    // CHECK ASSIGNMENT
+    // CHECK ASSIGNMENT (BY ASSIGNMENT ID OR ORDER ID)
     // ============================================
 
-    const assignment =
-      await DeliveryAssignment.findOne({
-        _id: id,
-      });
+    let assignmentQuery: any = { _id: id };
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      assignmentQuery = {
+        $or: [
+          { _id: new mongoose.Types.ObjectId(id) },
+          { order: new mongoose.Types.ObjectId(id) },
+        ],
+      };
+    }
+
+    const assignment = await DeliveryAssignment.findOne(assignmentQuery);
 
     if (!assignment) {
       return NextResponse.json(
@@ -79,19 +89,15 @@ export async function POST(
     // VERIFY DELIVERY BOY WAS BROADCASTED TO
     // ============================================
 
-    const wasBroadcastedToThisBoy =
-      assignment.broadcastedTo.some(
-        (boyId) =>
-          boyId.toString() ===
-          deliveryBoyId.toString(),
-      );
+    const wasBroadcastedToThisBoy = assignment.broadcastedTo.some(
+      (boyId: any) => boyId.toString() === deliveryBoyId.toString(),
+    );
 
     if (!wasBroadcastedToThisBoy) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "This delivery was not offered to you",
+          message: "This delivery was not offered to you",
         },
         { status: 403 },
       );
@@ -105,8 +111,7 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "This delivery request is no longer available",
+          message: "This delivery request is no longer available",
         },
         { status: 409 },
       );
@@ -116,8 +121,7 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "This delivery has already been accepted",
+          message: "This delivery has already been accepted",
         },
         { status: 409 },
       );
@@ -127,18 +131,16 @@ export async function POST(
     // CHECK IF DELIVERY BOY ALREADY HAS A DELIVERY
     // ============================================
 
-    const alreadyAssigned =
-      await DeliveryAssignment.findOne({
-        assignedTo: deliveryBoyId,
-        status: "assigned",
-      });
+    const alreadyAssigned = await DeliveryAssignment.findOne({
+      assignedTo: deliveryBoyObjectId,
+      status: "assigned",
+    });
 
     if (alreadyAssigned) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "You already have an active delivery assignment",
+          message: "You already have an active delivery assignment",
         },
         { status: 409 },
       );
@@ -147,39 +149,25 @@ export async function POST(
     // ============================================
     // ATOMIC ACCEPT
     // ============================================
-    //
-    // This is the important part.
-    //
-    // If another delivery boy accepts first,
-    // this query will return null.
-    //
-    // ============================================
 
-    const acceptedAssignment =
-      await DeliveryAssignment.findOneAndUpdate(
-        {
-          _id: id,
-
-          status: "broadcasted",
-
-          assignedTo: null,
-
-          broadcastedTo:
-            deliveryBoyId,
+    const acceptedAssignment = await DeliveryAssignment.findOneAndUpdate(
+      {
+        _id: assignment._id,
+        status: "broadcasted",
+        assignedTo: null,
+        broadcastedTo: deliveryBoyObjectId,
+      },
+      {
+        $set: {
+          assignedTo: deliveryBoyObjectId,
+          status: "assigned",
+          acceptedAt: new Date(),
         },
-        {
-          $set: {
-            assignedTo: deliveryBoyId,
-
-            status: "assigned",
-
-            acceptedAt: new Date(),
-          },
-        },
-        {
-          returnDocument: "after",
-        },
-      );
+      },
+      {
+        returnDocument: "after",
+      },
+    );
 
     // ============================================
     // SOMEONE ELSE ACCEPTED FIRST
@@ -205,35 +193,22 @@ export async function POST(
     // FIND ORDER
     // ============================================
 
-    const order =
-      await Order.findById(
-        acceptedAssignment.order,
-      );
+    const order = await Order.findById(acceptedAssignment.order);
 
     if (!order) {
-      // ------------------------------------------
       // ROLLBACK
-      // ------------------------------------------
-
       await DeliveryAssignment.findOneAndUpdate(
         {
           _id: acceptedAssignment._id,
-
           status: "assigned",
-
-          assignedTo: deliveryBoyId,
+          assignedTo: deliveryBoyObjectId,
         },
         {
           $set: {
             assignedTo: null,
-
             status: "broadcasted",
-
             acceptedAt: null,
           },
-        },
-        {
-          returnDocument: "after",
         },
       );
 
@@ -250,12 +225,8 @@ export async function POST(
     // UPDATE ORDER
     // ============================================
 
-    order.assignment =
-      acceptedAssignment._id;
-
-    order.assignedDeliveryBoy =
-      deliveryBoyId;
-
+    order.assignment = acceptedAssignment._id;
+    order.assignedDeliveryBoy = deliveryBoyObjectId;
     order.status = "out of delivery";
 
     await order.save();
@@ -266,39 +237,33 @@ export async function POST(
     );
 
     // ============================================
-    // REMOVE DELIVERY BOY FROM OTHER
-    // BROADCASTED ASSIGNMENTS
-    // ============================================
-    //
-    // Because this system allows one active
-    // delivery per delivery boy.
-    //
+    // REMOVE DELIVERY BOY FROM OTHER BROADCASTED ASSIGNMENTS
     // ============================================
 
     await DeliveryAssignment.updateMany(
       {
-        _id: {
-          $ne: acceptedAssignment._id,
-        },
-
-        broadcastedTo:
-          deliveryBoyId,
-
+        _id: { $ne: acceptedAssignment._id },
+        broadcastedTo: deliveryBoyObjectId,
         status: "broadcasted",
-
         assignedTo: null,
       },
       {
         $pull: {
-          broadcastedTo:
-            deliveryBoyId,
+          broadcastedTo: deliveryBoyObjectId,
         },
       },
     );
 
-    console.log(
-      "✅ Removed delivery boy from other broadcasted orders",
-    );
+    // Broadcast order-accepted event to all delivery boys room so their dashboards clear this item
+    emitEventHandler(
+      "order-accepted",
+      {
+        assignmentId: String(acceptedAssignment._id),
+        orderId: String(order._id),
+        acceptedBy: deliveryBoyId,
+      },
+      { room: "delivery-boys" },
+    ).catch(() => {});
 
     // ============================================
     // SUCCESS
@@ -307,61 +272,32 @@ export async function POST(
     return NextResponse.json(
       {
         success: true,
-
-        message:
-          "Order accepted successfully",
-
+        message: "Order accepted successfully",
         assignment: {
-          id:
-            acceptedAssignment._id,
-
-          orderId:
-            acceptedAssignment.order,
-
-          assignedTo:
-            acceptedAssignment.assignedTo,
-
-          status:
-            acceptedAssignment.status,
-
-          acceptedAt:
-            acceptedAssignment.acceptedAt,
+          id: acceptedAssignment._id,
+          orderId: acceptedAssignment.order,
+          assignedTo: acceptedAssignment.assignedTo,
+          status: acceptedAssignment.status,
+          acceptedAt: acceptedAssignment.acceptedAt,
         },
-
         order: {
           id: order._id,
-
-          orderRequestId:
-            order.orderRequestId,
-
+          orderRequestId: order.orderRequestId,
           status: order.status,
-
-          assignment:
-            order.assignment,
-
-          assignedDeliveryBoy:
-            order.assignedDeliveryBoy,
+          assignment: order.assignment,
+          assignedDeliveryBoy: order.assignedDeliveryBoy,
         },
       },
       { status: 200 },
     );
   } catch (error) {
-    console.error(
-      "❌ Accept delivery assignment error:",
-      error,
-    );
+    console.error("❌ Accept delivery assignment error:", error);
 
     return NextResponse.json(
       {
         success: false,
-
-        message:
-          "Failed to accept delivery assignment",
-
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unknown error",
+        message: "Failed to accept delivery assignment",
+        error: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },
     );

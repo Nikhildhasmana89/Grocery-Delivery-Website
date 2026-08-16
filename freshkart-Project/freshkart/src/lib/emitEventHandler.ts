@@ -1,18 +1,38 @@
 import axios from "axios";
 
+export interface EmitEventOptions {
+  socketId?: string;
+  userId?: string;
+  room?: string;
+}
+
+/**
+ * emitEventHandler supports three target types:
+ * - string: treated as socketId
+ * - { socketId, userId, room }: options object
+ * - undefined: broadcast to all connected clients
+ */
 async function emitEventHandler(
   event: string,
   data: unknown,
-  socketId?: string,
+  target?: string | EmitEventOptions,
 ) {
   const socketServerUrl =
     process.env.NEXT_PUBLIC_SOCKET_SERVER_URL;
+
+  let payloadTarget: { socketId?: string; userId?: string; room?: string } = {};
+
+  if (typeof target === "string") {
+    payloadTarget = { socketId: target };
+  } else if (target && typeof target === "object") {
+    payloadTarget = target;
+  }
 
   console.log("================================");
   console.log("📡 SOCKET NOTIFICATION");
   console.log("Server:", socketServerUrl);
   console.log("Event:", event);
-  console.log("Socket ID:", socketId);
+  console.log("Target:", payloadTarget);
   console.log("Data:", data);
   console.log("================================");
 
@@ -24,24 +44,16 @@ async function emitEventHandler(
     return false;
   }
 
-  if (!socketId) {
-    console.error(
-      "❌ Socket ID is missing",
-    );
-
-    return false;
-  }
-
   try {
     const response = await axios.post(
       `${socketServerUrl}/notify`,
       {
-        socketId,
+        ...payloadTarget,
         event,
         data,
       },
       {
-        timeout: 3000,
+        timeout: 2500,
       },
     );
 
@@ -58,30 +70,15 @@ async function emitEventHandler(
         "❌ Socket notification failed",
       );
 
-      console.error(
-        "URL:",
-        `${socketServerUrl}/notify`,
-      );
+      console.error("URL:", `${socketServerUrl}/notify`);
 
-      console.error(
-        "Status:",
-        error.response?.status,
-      );
+      console.error("Status:", error.response?.status);
 
-      console.error(
-        "Response:",
-        error.response?.data,
-      );
+      console.error("Response:", error.response?.data);
 
-      console.error(
-        "Message:",
-        error.message,
-      );
+      console.error("Message:", error.message);
     } else {
-      console.error(
-        "❌ Socket notification error:",
-        error,
-      );
+      console.error("❌ Socket notification error:", error);
     }
 
     return false;

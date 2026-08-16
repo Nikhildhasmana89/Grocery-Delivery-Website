@@ -121,7 +121,7 @@ interface DeliveryAssignment {
    COMPONENT
 ========================================================= */
 
-function DeliveryBoyDashboard() {
+function DeliveryBoyDashboard({ user }: { user?: any }) {
   const { data: session, status: sessionStatus } =
     useSession();
 
@@ -454,6 +454,9 @@ function DeliveryBoyDashboard() {
 
     if (socket.connected) {
       handleConnect();
+    } else {
+      console.log("🔌 Initiating Socket.IO connection for delivery boy...");
+      socket.connect();
     }
 
     /* -----------------------------------------------
@@ -501,6 +504,7 @@ function DeliveryBoyDashboard() {
 
   const handleAccept = async (
     orderId: string,
+    assignmentId?: string | null,
   ) => {
     if (
       acceptingId ||
@@ -509,6 +513,8 @@ function DeliveryBoyDashboard() {
       return;
     }
 
+    const targetId = assignmentId || orderId;
+
     try {
       setAcceptingId(orderId);
       setError("");
@@ -516,18 +522,13 @@ function DeliveryBoyDashboard() {
       console.log(
         "🚚 Accepting order:",
         orderId,
+        "Assignment:",
+        targetId,
       );
-
-      /*
-       * Your earlier backend accept route
-       * uses POST.
-       *
-       * Therefore use POST here.
-       */
 
       const response =
         await axios.post(
-          `/api/delivery/orders/${orderId}/accept`,
+          `/api/delivery/assignment/${targetId}/accept-assignment`,
           {},
           {
             timeout: 10000,

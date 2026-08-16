@@ -1,7 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import { motion, AnimatePresence } from "framer-motion";
+
 import {
   Package,
   Clock,
@@ -14,10 +20,19 @@ import {
   Check,
   CreditCard,
   ImageIcon,
+  Phone,
+  Mail,
+  Bike,
+  UserCheck,
+  Loader2,
 } from "lucide-react";
+
 import axios from "axios";
 
-// --- Types ---
+/* =========================================================
+   TYPES
+========================================================= */
+
 export type OrderStatus =
   | "pending"
   | "out of delivery"
@@ -31,20 +46,56 @@ export interface OrderItem {
   image?: string;
 }
 
-export interface AdminOrderCardProps {
-  orderId?: string;
-  customerName?: string;
-  customerEmail?: string;
-  shippingAddress?: string | { fullAddress?: string };
-  orderDate?: string;
-  status?: OrderStatus;
-  paymentMethod?: string;
-  items?: OrderItem[];
-  totalAmount?: number;
-  onStatusChange?: (newStatus: OrderStatus) => void;
+export interface DeliveryBoy {
+  _id: string;
+  name?: string;
+  email?: string;
+  mobile?: string;
+  image?: string;
 }
 
-// --- Default Mock Data ---
+export interface AdminOrderCardProps {
+  orderId?: string;
+
+  customerName?: string;
+  customerEmail?: string;
+
+  shippingAddress?:
+    | string
+    | {
+        fullAddress?: string;
+      };
+
+  orderDate?: string;
+
+  status?: OrderStatus;
+
+  paymentMethod?: string;
+
+  items?: OrderItem[];
+
+  totalAmount?: number;
+
+  /* =========================================
+     ASSIGNED DELIVERY BOY
+  ========================================= */
+
+  assignedDeliveryBoy?:
+    | string
+    | DeliveryBoy
+    | null;
+
+  assignedAt?: string | null;
+
+  onStatusChange?: (
+    newStatus: OrderStatus
+  ) => void;
+}
+
+/* =========================================================
+   DEFAULT ITEMS
+========================================================= */
+
 const defaultItems: OrderItem[] = [
   {
     id: "1",
@@ -54,6 +105,7 @@ const defaultItems: OrderItem[] = [
     image:
       "https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=150&auto=format&fit=crop&q=80",
   },
+
   {
     id: "2",
     name: "Ergonomic Mouse",
@@ -64,7 +116,10 @@ const defaultItems: OrderItem[] = [
   },
 ];
 
-// --- Status badge styling map ---
+/* =========================================================
+   STATUS STYLES
+========================================================= */
+
 const statusStyles: Record<
   OrderStatus,
   {
@@ -80,7 +135,9 @@ const statusStyles: Record<
     text: "text-amber-600 dark:text-amber-400",
     border: "border-amber-500/20",
     glow: "shadow-amber-500/10",
-    icon: <Clock className="w-3.5 h-3.5" />,
+    icon: (
+      <Clock className="h-3.5 w-3.5" />
+    ),
   },
 
   "out of delivery": {
@@ -88,44 +145,97 @@ const statusStyles: Record<
     text: "text-blue-600 dark:text-blue-400",
     border: "border-blue-500/20",
     glow: "shadow-blue-500/10",
-    icon: <Truck className="w-3.5 h-3.5" />,
+    icon: (
+      <Truck className="h-3.5 w-3.5" />
+    ),
   },
 
   delivered: {
     bg: "bg-emerald-500/10",
     text: "text-emerald-600 dark:text-emerald-400",
-    border: "border-emerald-500/20",
+    border:
+      "border-emerald-500/20",
     glow: "shadow-emerald-500/10",
-    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+    icon: (
+      <CheckCircle2 className="h-3.5 w-3.5" />
+    ),
   },
 };
 
+/* =========================================================
+   COMPONENT
+========================================================= */
+
 export default function AdminOrderCard({
   orderId = "ORD-8942-XJ",
+
   customerName = "Sarah Jenkins",
-  customerEmail = "sarah.j@example.com",
-  shippingAddress = "742 Evergreen Terrace, Springfield, OR 97477",
-  orderDate = "Oct 24, 2026 • 14:32",
+
+  customerEmail =
+    "sarah.j@example.com",
+
+  shippingAddress =
+    "742 Evergreen Terrace, Springfield, OR 97477",
+
+  orderDate =
+    "Oct 24, 2026 • 14:32",
+
   status = "pending",
-  paymentMethod = "Credit Card (•••• 4242)",
+
+  paymentMethod =
+    "Credit Card (•••• 4242)",
+
   items = defaultItems,
+
   totalAmount = 229.97,
+
+  assignedDeliveryBoy = null,
+
+  assignedAt = null,
+
   onStatusChange,
 }: AdminOrderCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  /* =======================================================
+     STATE
+  ======================================================= */
+
+  const [isExpanded, setIsExpanded] =
+    useState(false);
+
   const [currentStatus, setCurrentStatus] =
     useState<OrderStatus>(status);
-  const [copied, setCopied] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
 
-  // Sync state if external status prop changes
+  const [copied, setCopied] =
+    useState(false);
+
+  const [isUpdating, setIsUpdating] =
+    useState(false);
+
+  /* =======================================================
+     SYNC STATUS
+  ======================================================= */
+
   useEffect(() => {
     setCurrentStatus(status);
   }, [status]);
 
-  // --------------------------------------------------
-  // Update order status
-  // --------------------------------------------------
+  /* =======================================================
+     DELIVERY BOY
+  ======================================================= */
+
+  const deliveryBoy =
+    typeof assignedDeliveryBoy ===
+    "object"
+      ? assignedDeliveryBoy
+      : null;
+
+  const isAssigned =
+    !!assignedDeliveryBoy;
+
+  /* =======================================================
+     UPDATE STATUS
+  ======================================================= */
+
   const updateStatus = async (
     id: string,
     newStatus: OrderStatus
@@ -133,31 +243,39 @@ export default function AdminOrderCard({
     try {
       setIsUpdating(true);
 
-      console.log("📦 Updating order:");
-      console.log("Order ID:", id);
-      console.log("New Status:", newStatus);
-
-      const response = await axios.post(
-        `/api/admin/update-order-status/${id}`,
-        {
-          status: newStatus,
-        }
+      console.log(
+        "📦 Updating order:",
+        id
       );
 
-      console.log("✅ API RESPONSE:", response.data);
+      console.log(
+        "New status:",
+        newStatus
+      );
+
+      const response =
+        await axios.post(
+          `/api/admin/update-order-status/${id}`,
+          {
+            status: newStatus,
+          }
+        );
+
+      console.log(
+        "✅ Status updated:",
+        response.data
+      );
 
       return response.data;
     } catch (error: any) {
-      console.error("❌ UPDATE ORDER ERROR:", error);
-
       console.error(
-        "❌ SERVER RESPONSE:",
-        error.response?.data
+        "❌ Update order error:",
+        error
       );
 
       console.error(
-        "❌ STATUS:",
-        error.response?.status
+        "Server:",
+        error.response?.data
       );
 
       throw error;
@@ -166,56 +284,126 @@ export default function AdminOrderCard({
     }
   };
 
-  // --------------------------------------------------
-  // Copy order ID
-  // --------------------------------------------------
+  /* =======================================================
+     COPY ORDER ID
+  ======================================================= */
+
   const handleCopyId = async () => {
     try {
-      await navigator.clipboard.writeText(orderId);
+      await navigator.clipboard.writeText(
+        orderId
+      );
+
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+
+      setTimeout(
+        () => setCopied(false),
+        2000
+      );
     } catch (error) {
-      console.error("Failed to copy order ID:", error);
+      console.error(
+        "Copy failed:",
+        error
+      );
     }
   };
 
-  // --------------------------------------------------
-  // Status dropdown
-  // --------------------------------------------------
+  /* =======================================================
+     STATUS SELECT
+  ======================================================= */
+
   const handleStatusSelect = async (
     e: React.ChangeEvent<HTMLSelectElement>
   ) => {
-    const newStatus = e.target.value as OrderStatus;
+    const newStatus =
+      e.target.value as OrderStatus;
 
-    if (newStatus === currentStatus) return;
+    if (
+      newStatus === currentStatus
+    ) {
+      return;
+    }
 
-    const previousStatus = currentStatus;
+    const previousStatus =
+      currentStatus;
+
     setCurrentStatus(newStatus);
 
     try {
-      await updateStatus(orderId, newStatus);
-      onStatusChange?.(newStatus);
-    } catch (error) {
-      setCurrentStatus(previousStatus);
+      await updateStatus(
+        orderId,
+        newStatus
+      );
+
+      onStatusChange?.(
+        newStatus
+      );
+    } catch {
+      setCurrentStatus(
+        previousStatus
+      );
+
       alert(
         "Failed to update order status. Please try again."
       );
     }
   };
 
-  const currentStatusStyle =
-    statusStyles[currentStatus] ?? statusStyles.pending;
+  /* =======================================================
+     STATUS STYLE
+  ======================================================= */
 
-  const totalItemCount = items.reduce(
-    (acc, item) => acc + (item.quantity || 0),
-    0
-  );
+  const currentStatusStyle =
+    statusStyles[currentStatus] ??
+    statusStyles.pending;
+
+  /* =======================================================
+     ITEM COUNT
+  ======================================================= */
+
+  const totalItemCount =
+    useMemo(() => {
+      return items.reduce(
+        (acc, item) =>
+          acc +
+          (item.quantity || 0),
+        0
+      );
+    }, [items]);
+
+  /* =======================================================
+     ADDRESS
+  ======================================================= */
 
   const formattedAddress =
-    typeof shippingAddress === "string"
+    typeof shippingAddress ===
+    "string"
       ? shippingAddress
       : shippingAddress?.fullAddress ??
         "No address provided";
+
+  /* =======================================================
+     ASSIGNED DATE
+  ======================================================= */
+
+  const formattedAssignedAt =
+    assignedAt
+      ? new Date(
+          assignedAt
+        ).toLocaleString(
+          "en-IN",
+          {
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          }
+        )
+      : null;
+
+  /* =======================================================
+     UI
+  ======================================================= */
 
   return (
     <motion.div
@@ -234,7 +422,12 @@ export default function AdminOrderCard({
       }}
       transition={{
         duration: 0.45,
-        ease: [0.22, 1, 0.36, 1],
+        ease: [
+          0.22,
+          1,
+          0.36,
+          1,
+        ],
       }}
       className="
         group relative w-full max-w-2xl
@@ -248,7 +441,10 @@ export default function AdminOrderCard({
         dark:bg-slate-950
       "
     >
-      {/* Ambient animated glow */}
+      {/* =====================================================
+          GLOW
+      ====================================================== */}
+
       <motion.div
         className="
           pointer-events-none
@@ -257,11 +453,18 @@ export default function AdminOrderCard({
           rounded-full
           bg-indigo-500/10
           blur-3xl
-          dark:bg-indigo-500/10
         "
         animate={{
-          scale: [1, 1.15, 1],
-          opacity: [0.35, 0.65, 0.35],
+          scale: [
+            1,
+            1.15,
+            1,
+          ],
+          opacity: [
+            0.35,
+            0.65,
+            0.35,
+          ],
         }}
         transition={{
           duration: 5,
@@ -270,14 +473,20 @@ export default function AdminOrderCard({
         }}
       />
 
-      {/* Top gradient line */}
+      {/* =====================================================
+          TOP LINE
+      ====================================================== */}
+
       <motion.div
-        initial={{ scaleX: 0 }}
-        animate={{ scaleX: 1 }}
+        initial={{
+          scaleX: 0,
+        }}
+        animate={{
+          scaleX: 1,
+        }}
         transition={{
           duration: 0.8,
           delay: 0.15,
-          ease: "easeOut",
         }}
         className="
           absolute left-0 right-0 top-0
@@ -290,9 +499,9 @@ export default function AdminOrderCard({
         "
       />
 
-      {/* -------------------------------------------------- */}
-      {/* HEADER */}
-      {/* -------------------------------------------------- */}
+      {/* =====================================================
+          HEADER
+      ====================================================== */}
 
       <div
         className="
@@ -313,8 +522,9 @@ export default function AdminOrderCard({
           dark:to-indigo-950/20
         "
       >
+        {/* ORDER INFO */}
+
         <div className="flex items-center gap-3">
-          {/* Package Icon */}
           <motion.div
             initial={{
               scale: 0,
@@ -329,10 +539,6 @@ export default function AdminOrderCard({
               type: "spring",
               stiffness: 220,
               damping: 14,
-            }}
-            whileHover={{
-              scale: 1.08,
-              rotate: 3,
             }}
             className="
               relative
@@ -350,41 +556,11 @@ export default function AdminOrderCard({
             "
           >
             <Package className="h-5 w-5" />
-
-            <motion.div
-              className="
-                absolute inset-0
-                bg-white/20
-              "
-              initial={{
-                x: "-100%",
-              }}
-              animate={{
-                x: "100%",
-              }}
-              transition={{
-                duration: 1.2,
-                delay: 0.6,
-                ease: "easeInOut",
-              }}
-            />
           </motion.div>
 
-          {/* Order Information */}
           <div>
             <div className="flex items-center gap-2">
-              <motion.span
-                initial={{
-                  opacity: 0,
-                  x: -8,
-                }}
-                animate={{
-                  opacity: 1,
-                  x: 0,
-                }}
-                transition={{
-                  delay: 0.25,
-                }}
+              <span
                 className="
                   font-bold
                   tracking-tight
@@ -393,16 +569,10 @@ export default function AdminOrderCard({
                 "
               >
                 {orderId}
-              </motion.span>
+              </span>
 
-              {/* Copy */}
-              <motion.button
-                whileHover={{
-                  scale: 1.15,
-                }}
-                whileTap={{
-                  scale: 0.85,
-                }}
+              <button
+                type="button"
                 onClick={handleCopyId}
                 className="
                   rounded-lg
@@ -412,22 +582,19 @@ export default function AdminOrderCard({
                   hover:bg-slate-200
                   hover:text-indigo-600
                   dark:hover:bg-slate-800
-                  dark:hover:text-indigo-400
                 "
-                title="Copy Order ID"
-                type="button"
               >
-                <AnimatePresence mode="wait">
+                <AnimatePresence
+                  mode="wait"
+                >
                   {copied ? (
                     <motion.div
                       key="check"
                       initial={{
                         scale: 0,
-                        rotate: -90,
                       }}
                       animate={{
                         scale: 1,
-                        rotate: 0,
                       }}
                       exit={{
                         scale: 0,
@@ -449,57 +616,43 @@ export default function AdminOrderCard({
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </motion.button>
+              </button>
             </div>
 
-            <motion.p
-              initial={{
-                opacity: 0,
-              }}
-              animate={{
-                opacity: 1,
-              }}
-              transition={{
-                delay: 0.35,
-              }}
+            <p
               className="
-                mt-1
-                flex items-center
+                mt-1 flex items-center
                 text-xs
                 text-slate-500
                 dark:text-slate-400
               "
             >
               <Clock className="mr-1.5 h-3 w-3" />
+
               {orderDate}
-            </motion.p>
+            </p>
           </div>
         </div>
 
-        {/* Status Controls */}
+        {/* STATUS */}
+
         <div className="flex items-center gap-2">
-          {/* Animated Status Badge */}
-          <AnimatePresence mode="wait">
+          <AnimatePresence
+            mode="wait"
+          >
             <motion.div
               key={currentStatus}
               initial={{
                 opacity: 0,
                 scale: 0.75,
-                y: -5,
               }}
               animate={{
                 opacity: 1,
                 scale: 1,
-                y: 0,
               }}
               exit={{
                 opacity: 0,
                 scale: 0.75,
-              }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 20,
               }}
               className={`
                 inline-flex
@@ -515,36 +668,20 @@ export default function AdminOrderCard({
                 ${currentStatusStyle.bg}
                 ${currentStatusStyle.text}
                 ${currentStatusStyle.border}
-                ${currentStatusStyle.glow}
               `}
             >
-              <motion.span
-                animate={{
-                  scale: [1, 1.15, 1],
-                }}
-                transition={{
-                  duration: 1.8,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-              >
-                {currentStatusStyle.icon}
-              </motion.span>
+              {currentStatusStyle.icon}
 
               {currentStatus}
             </motion.div>
           </AnimatePresence>
 
-          {/* Select */}
-          <motion.div
-            whileHover={{
-              scale: 1.02,
-            }}
-            className="relative"
-          >
+          <div className="relative">
             <select
               value={currentStatus}
-              onChange={handleStatusSelect}
+              onChange={
+                handleStatusSelect
+              }
               disabled={isUpdating}
               className="
                 appearance-none
@@ -560,10 +697,6 @@ export default function AdminOrderCard({
                 font-semibold
                 text-slate-700
                 outline-none
-                transition-all
-                hover:border-indigo-300
-                hover:bg-indigo-50
-                focus:border-indigo-400
                 focus:ring-2
                 focus:ring-indigo-500/20
                 disabled:cursor-not-allowed
@@ -571,9 +704,6 @@ export default function AdminOrderCard({
                 dark:border-slate-700
                 dark:bg-slate-900
                 dark:text-slate-300
-                dark:hover:border-indigo-700
-                dark:hover:bg-indigo-950/40
-                dark:focus:border-indigo-500
               "
             >
               <option value="pending">
@@ -601,28 +731,271 @@ export default function AdminOrderCard({
                 text-slate-400
               "
             />
-          </motion.div>
+          </div>
         </div>
       </div>
 
-      {/* -------------------------------------------------- */}
-      {/* MAIN INFO */}
-      {/* -------------------------------------------------- */}
+      {/* =====================================================
+          ASSIGNED DELIVERY BOY
+      ====================================================== */}
+
+      <AnimatePresence>
+        {isAssigned && (
+          <motion.div
+            initial={{
+              opacity: 0,
+              height: 0,
+              y: -10,
+            }}
+            animate={{
+              opacity: 1,
+              height: "auto",
+              y: 0,
+            }}
+            exit={{
+              opacity: 0,
+              height: 0,
+              y: -10,
+            }}
+            transition={{
+              duration: 0.4,
+              ease: [
+                0.22,
+                1,
+                0.36,
+                1,
+              ],
+            }}
+            className="overflow-hidden"
+          >
+            <div
+              className="
+                mx-5 mt-5
+                overflow-hidden
+                rounded-2xl
+                border
+                border-emerald-200
+                bg-gradient-to-br
+                from-emerald-50
+                via-white
+                to-green-50
+                dark:border-emerald-900/50
+                dark:from-emerald-950/40
+                dark:via-slate-950
+                dark:to-green-950/20
+              "
+            >
+              {/* ASSIGNMENT HEADER */}
+
+              <div
+                className="
+                  flex items-center
+                  justify-between
+                  border-b
+                  border-emerald-100
+                  px-4 py-3
+                  dark:border-emerald-900/40
+                "
+              >
+                <div className="flex items-center gap-2">
+                  <motion.div
+                    animate={{
+                      scale: [
+                        1,
+                        1.08,
+                        1,
+                      ],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                    }}
+                    className="
+                      flex h-9 w-9
+                      items-center justify-center
+                      rounded-xl
+                      bg-emerald-500
+                      text-white
+                      shadow-lg
+                      shadow-emerald-500/20
+                    "
+                  >
+                    <Truck className="h-4 w-4" />
+                  </motion.div>
+
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                      Assigned Delivery Boy
+                    </p>
+
+                    <p className="text-[11px] text-emerald-600/70 dark:text-emerald-500">
+                      Order accepted successfully
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className="
+                    flex items-center gap-1.5
+                    rounded-full
+                    bg-emerald-500/10
+                    px-2.5 py-1
+                    text-[10px]
+                    font-bold
+                    text-emerald-600
+                    dark:text-emerald-400
+                  "
+                >
+                  <UserCheck className="h-3 w-3" />
+
+                  ASSIGNED
+                </div>
+              </div>
+
+              {/* DELIVERY BOY INFO */}
+
+              <div className="p-4">
+                <div className="flex items-center gap-4">
+                  {/* AVATAR */}
+
+                  <div className="relative">
+                    <div
+                      className="
+                        flex h-14 w-14
+                        items-center justify-center
+                        overflow-hidden
+                        rounded-2xl
+                        bg-gradient-to-br
+                        from-emerald-500
+                        to-green-600
+                        text-white
+                        shadow-lg
+                        shadow-emerald-500/20
+                      "
+                    >
+                      {deliveryBoy?.image ? (
+                        <img
+                          src={
+                            deliveryBoy.image
+                          }
+                          alt={
+                            deliveryBoy.name ||
+                            "Delivery Boy"
+                          }
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Bike className="h-6 w-6" />
+                      )}
+                    </div>
+
+                    <span
+                      className="
+                        absolute
+                        -bottom-1
+                        -right-1
+                        h-4 w-4
+                        rounded-full
+                        border-2
+                        border-white
+                        bg-emerald-500
+                        dark:border-slate-950
+                      "
+                    />
+                  </div>
+
+                  {/* NAME */}
+
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-bold text-slate-900 dark:text-white">
+                      {deliveryBoy?.name ||
+                        "Delivery Boy Assigned"}
+                    </h3>
+
+                    {deliveryBoy?.email && (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                        <Mail className="h-3 w-3" />
+
+                        <span className="truncate">
+                          {
+                            deliveryBoy.email
+                          }
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* CALL */}
+
+                  {deliveryBoy?.mobile && (
+                    <a
+                      href={`tel:${deliveryBoy.mobile}`}
+                      className="
+                        flex h-10 w-10
+                        shrink-0
+                        items-center justify-center
+                        rounded-xl
+                        bg-emerald-500
+                        text-white
+                        shadow-md
+                        shadow-emerald-500/20
+                        transition
+                        hover:bg-emerald-600
+                      "
+                      title="Call delivery boy"
+                    >
+                      <Phone className="h-4 w-4" />
+                    </a>
+                  )}
+                </div>
+
+                {/* DETAILS */}
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  {deliveryBoy?.mobile && (
+                    <div className="rounded-xl bg-white/80 p-3 dark:bg-slate-900/60">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                        Mobile
+                      </p>
+
+                      <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        <Phone className="h-3 w-3 text-emerald-500" />
+
+                        {
+                          deliveryBoy.mobile
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                  {formattedAssignedAt && (
+                    <div className="rounded-xl bg-white/80 p-3 dark:bg-slate-900/60">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                        Accepted
+                      </p>
+
+                      <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        <Clock className="h-3 w-3 text-emerald-500" />
+
+                        {formattedAssignedAt}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* =====================================================
+          MAIN INFO
+      ====================================================== */}
 
       <div className="relative grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
-        {/* Customer */}
+        {/* CUSTOMER */}
+
         <motion.div
-          initial={{
-            opacity: 0,
-            x: -15,
-          }}
-          animate={{
-            opacity: 1,
-            x: 0,
-          }}
-          transition={{
-            delay: 0.25,
-          }}
           whileHover={{
             y: -2,
           }}
@@ -632,13 +1005,8 @@ export default function AdminOrderCard({
             border-slate-100
             bg-slate-50/70
             p-4
-            transition-all
-            hover:border-indigo-100
-            hover:bg-indigo-50/40
             dark:border-slate-800
             dark:bg-slate-900/60
-            dark:hover:border-indigo-900
-            dark:hover:bg-indigo-950/20
           "
         >
           <span
@@ -648,21 +1016,12 @@ export default function AdminOrderCard({
               uppercase
               tracking-[0.15em]
               text-slate-400
-              dark:text-slate-500
             "
           >
             Customer
           </span>
 
-          <div
-            className="
-              mt-2
-              flex items-center
-              font-semibold
-              text-slate-800
-              dark:text-slate-200
-            "
-          >
+          <div className="mt-2 flex items-center font-semibold text-slate-800 dark:text-slate-200">
             <div
               className="
                 mr-2.5
@@ -678,35 +1037,19 @@ export default function AdminOrderCard({
               <User className="h-4 w-4" />
             </div>
 
-            <span>{customerName}</span>
+            <span>
+              {customerName}
+            </span>
           </div>
 
-          <p
-            className="
-              mt-1.5
-              pl-10
-              text-xs
-              text-slate-500
-              dark:text-slate-400
-            "
-          >
+          <p className="mt-1.5 pl-10 text-xs text-slate-500 dark:text-slate-400">
             {customerEmail}
           </p>
         </motion.div>
 
-        {/* Shipping */}
+        {/* ADDRESS */}
+
         <motion.div
-          initial={{
-            opacity: 0,
-            x: 15,
-          }}
-          animate={{
-            opacity: 1,
-            x: 0,
-          }}
-          transition={{
-            delay: 0.3,
-          }}
           whileHover={{
             y: -2,
           }}
@@ -716,13 +1059,8 @@ export default function AdminOrderCard({
             border-slate-100
             bg-slate-50/70
             p-4
-            transition-all
-            hover:border-indigo-100
-            hover:bg-indigo-50/40
             dark:border-slate-800
             dark:bg-slate-900/60
-            dark:hover:border-indigo-900
-            dark:hover:bg-indigo-950/20
           "
         >
           <span
@@ -732,7 +1070,6 @@ export default function AdminOrderCard({
               uppercase
               tracking-[0.15em]
               text-slate-400
-              dark:text-slate-500
             "
           >
             Shipping To
@@ -755,25 +1092,16 @@ export default function AdminOrderCard({
               <MapPin className="h-4 w-4" />
             </div>
 
-            <span
-              className="
-                pt-1
-                text-xs
-                font-medium
-                leading-relaxed
-                text-slate-600
-                dark:text-slate-300
-              "
-            >
+            <span className="pt-1 text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300">
               {formattedAddress}
             </span>
           </div>
         </motion.div>
       </div>
 
-      {/* -------------------------------------------------- */}
-      {/* PRODUCTS PREVIEW */}
-      {/* -------------------------------------------------- */}
+      {/* =====================================================
+          PRODUCTS
+      ====================================================== */}
 
       <div
         className="
@@ -786,100 +1114,64 @@ export default function AdminOrderCard({
         "
       >
         <div className="flex items-center gap-3">
-          <span
-            className="
-              text-xs
-              font-semibold
-              text-slate-500
-              dark:text-slate-400
-            "
-          >
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
             Products
           </span>
 
-          <div className="flex items-center -space-x-2">
-            {items.slice(0, 3).map((item, idx) => (
-              <motion.div
-                key={item.id || idx}
-                initial={{
-                  opacity: 0,
-                  scale: 0.6,
-                  x: -10,
-                }}
-                animate={{
-                  opacity: 1,
-                  scale: 1,
-                  x: 0,
-                }}
-                transition={{
-                  delay: 0.35 + idx * 0.08,
-                  type: "spring",
-                  stiffness: 250,
-                  damping: 18,
-                }}
-                whileHover={{
-                  scale: 1.18,
-                  y: -5,
-                  zIndex: 50,
-                }}
-                className="
-                  relative
-                  z-10
-                  h-10 w-10
-                  shrink-0
-                  overflow-hidden
-                  rounded-xl
-                  border-2
-                  border-white
-                  bg-slate-100
-                  shadow-md
-                  dark:border-slate-950
-                  dark:bg-slate-800
-                "
-                title={`${item.name} ($${(
-                  Number(item.price || 0) *
-                  Number(item.quantity || 0)
-                ).toFixed(2)})`}
-              >
-                {item.image ? (
-                  <img
-                    src={item.image}
-                    alt={item.name}
+          <div className="flex -space-x-2">
+            {items
+              .slice(0, 3)
+              .map(
+                (
+                  item,
+                  idx
+                ) => (
+                  <motion.div
+                    key={
+                      item.id ||
+                      idx
+                    }
+                    whileHover={{
+                      scale: 1.15,
+                      y: -4,
+                      zIndex: 50,
+                    }}
                     className="
-                      h-full w-full
-                      object-cover
-                      transition-transform
-                      duration-300
-                      hover:scale-110
+                      relative
+                      h-10 w-10
+                      overflow-hidden
+                      rounded-xl
+                      border-2
+                      border-white
+                      bg-slate-100
+                      shadow-md
+                      dark:border-slate-950
                     "
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-slate-400">
-                    <Package className="h-3.5 w-3.5" />
-                  </div>
-                )}
-              </motion.div>
-            ))}
+                  >
+                    {item.image ? (
+                      <img
+                        src={
+                          item.image
+                        }
+                        alt={
+                          item.name
+                        }
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-slate-400">
+                        <Package className="h-3.5 w-3.5" />
+                      </div>
+                    )}
+                  </motion.div>
+                )
+              )}
 
-            {items.length > 3 && (
-              <motion.div
-                initial={{
-                  opacity: 0,
-                  scale: 0.6,
-                }}
-                animate={{
-                  opacity: 1,
-                  scale: 1,
-                }}
-                transition={{
-                  delay: 0.6,
-                  type: "spring",
-                }}
+            {items.length >
+              3 && (
+              <div
                 className="
-                  relative
-                  z-20
                   flex h-10 w-10
-                  shrink-0
                   items-center justify-center
                   rounded-xl
                   border-2
@@ -894,29 +1186,19 @@ export default function AdminOrderCard({
                   dark:border-slate-950
                 "
               >
-                +{items.length - 3}
-              </motion.div>
+                +
+                {items.length -
+                  3}
+              </div>
             )}
           </div>
         </div>
 
-        <motion.span
-          initial={{
-            opacity: 0,
-            x: 10,
-          }}
-          animate={{
-            opacity: 1,
-            x: 0,
-          }}
-          transition={{
-            delay: 0.4,
-          }}
+        <span
           className="
             rounded-full
             bg-slate-100
-            px-3
-            py-1.5
+            px-3 py-1.5
             text-[11px]
             font-semibold
             text-slate-500
@@ -925,21 +1207,27 @@ export default function AdminOrderCard({
           "
         >
           {totalItemCount}{" "}
-          {totalItemCount === 1 ? "Item" : "Items"} Total
-        </motion.span>
+          {totalItemCount ===
+          1
+            ? "Item"
+            : "Items"}
+        </span>
       </div>
 
-      {/* -------------------------------------------------- */}
-      {/* EXPAND BUTTON */}
-      {/* -------------------------------------------------- */}
+      {/* =====================================================
+          EXPAND
+      ====================================================== */}
 
       <motion.button
         whileTap={{
           scale: 0.985,
         }}
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() =>
+          setIsExpanded(
+            !isExpanded
+          )
+        }
         className="
-          group/expand
           flex w-full
           items-center
           justify-between
@@ -950,86 +1238,36 @@ export default function AdminOrderCard({
           text-xs
           font-semibold
           text-slate-600
-          transition-all
-          duration-300
           hover:bg-indigo-50/60
           hover:text-indigo-600
           dark:border-slate-800
           dark:bg-slate-950/40
           dark:text-slate-300
-          dark:hover:bg-indigo-950/30
-          dark:hover:text-indigo-400
         "
         type="button"
       >
-        <span className="flex items-center gap-2">
-          <motion.span
-            animate={{
-              scale: isExpanded ? 1.03 : 1,
-            }}
-          >
-            {isExpanded
-              ? "Hide Details"
-              : "View Detailed Item List"}
-          </motion.span>
-
-          <AnimatePresence mode="wait">
-            {!isExpanded && (
-              <motion.span
-                initial={{
-                  opacity: 0,
-                  x: -5,
-                }}
-                animate={{
-                  opacity: 1,
-                  x: 0,
-                }}
-                exit={{
-                  opacity: 0,
-                  x: -5,
-                }}
-                className="
-                  rounded-full
-                  bg-indigo-100
-                  px-2
-                  py-0.5
-                  text-[9px]
-                  text-indigo-600
-                  dark:bg-indigo-950
-                  dark:text-indigo-400
-                "
-              >
-                {items.length}
-              </motion.span>
-            )}
-          </AnimatePresence>
+        <span>
+          {isExpanded
+            ? "Hide Details"
+            : "View Detailed Item List"}
         </span>
 
         <motion.div
           animate={{
-            rotate: isExpanded ? 180 : 0,
+            rotate: isExpanded
+              ? 180
+              : 0,
           }}
-          transition={{
-            duration: 0.3,
-            ease: "easeInOut",
-          }}
-          className="
-            rounded-lg
-            p-1
-            transition-colors
-            group-hover/expand:bg-indigo-100
-            dark:group-hover/expand:bg-indigo-950
-          "
         >
           <ChevronDown className="h-4 w-4 text-slate-400" />
         </motion.div>
       </motion.button>
 
-      {/* -------------------------------------------------- */}
-      {/* EXPANDED ITEMS */}
-      {/* -------------------------------------------------- */}
+      {/* =====================================================
+          EXPANDED ITEMS
+      ====================================================== */}
 
-      <AnimatePresence mode="popLayout">
+      <AnimatePresence>
         {isExpanded && (
           <motion.div
             initial={{
@@ -1044,28 +1282,9 @@ export default function AdminOrderCard({
               height: 0,
               opacity: 0,
             }}
-            transition={{
-              height: {
-                duration: 0.35,
-                ease: [0.22, 1, 0.36, 1],
-              },
-              opacity: {
-                duration: 0.2,
-              },
-            }}
             className="overflow-hidden"
           >
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              variants={{
-                hidden: {},
-                visible: {
-                  transition: {
-                    staggerChildren: 0.08,
-                  },
-                },
-              }}
+            <div
               className="
                 space-y-3
                 bg-gradient-to-b
@@ -1076,148 +1295,134 @@ export default function AdminOrderCard({
                 dark:to-slate-950
               "
             >
-              {items.map((item, idx) => (
-                <motion.div
-                  key={item.id || idx}
-                  variants={{
-                    hidden: {
+              {items.map(
+                (
+                  item,
+                  idx
+                ) => (
+                  <motion.div
+                    key={
+                      item.id ||
+                      idx
+                    }
+                    initial={{
                       opacity: 0,
                       x: -15,
-                    },
-                    visible: {
+                    }}
+                    animate={{
                       opacity: 1,
                       x: 0,
-                    },
-                  }}
-                  whileHover={{
-                    x: 4,
-                    scale: 1.01,
-                  }}
-                  transition={{
-                    duration: 0.25,
-                  }}
-                  className="
-                    flex
-                    items-center
-                    justify-between
-                    gap-3
-                    rounded-2xl
-                    border
-                    border-slate-200/70
-                    bg-white/90
-                    p-3
-                    shadow-sm
-                    transition-shadow
-                    hover:shadow-md
-                    dark:border-slate-800
-                    dark:bg-slate-900/70
-                  "
-                >
-                  {/* Item Info */}
-                  <div className="flex min-w-0 items-center gap-3">
-                    <motion.div
-                      whileHover={{
-                        scale: 1.08,
-                      }}
-                      className="
-                        flex
-                        h-12 w-12
-                        shrink-0
-                        items-center
-                        justify-center
-                        overflow-hidden
-                        rounded-xl
-                        border
-                        border-slate-200
-                        bg-slate-50
-                        dark:border-slate-700
-                        dark:bg-slate-800
-                      "
-                    >
-                      {item.image ? (
-                        <img
-                          src={item.image}
-                          alt={item.name}
-                          className="
-                            h-full w-full
-                            object-cover
-                            transition-transform
-                            duration-300
-                            hover:scale-110
-                          "
-                        />
-                      ) : (
-                        <ImageIcon className="h-5 w-5 text-slate-400" />
-                      )}
-                    </motion.div>
-
-                    <div className="min-w-0">
-                      <p
-                        className="
-                          line-clamp-1
-                          text-xs
-                          font-semibold
-                          text-slate-800
-                          dark:text-slate-200
-                        "
-                      >
-                        {item.name}
-                      </p>
-
-                      <p
-                        className="
-                          mt-1
-                          text-[11px]
-                          text-slate-400
-                        "
-                      >
-                        ${Number(item.price || 0).toFixed(2)}
-                        {" × "}
-                        {Number(item.quantity || 0)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Subtotal */}
-                  <motion.span
-                    whileHover={{
-                      scale: 1.05,
                     }}
                     className="
-                      shrink-0
-                      rounded-lg
-                      bg-indigo-50
-                      px-2.5
-                      py-1.5
-                      text-xs
-                      font-bold
-                      text-indigo-600
-                      dark:bg-indigo-950/50
-                      dark:text-indigo-400
+                      flex items-center
+                      justify-between
+                      gap-3
+                      rounded-2xl
+                      border
+                      border-slate-200/70
+                      bg-white/90
+                      p-3
+                      shadow-sm
+                      dark:border-slate-800
+                      dark:bg-slate-900/70
                     "
                   >
-                    $
-                    {(
-                      Number(item.price || 0) *
-                      Number(item.quantity || 0)
-                    ).toFixed(2)}
-                  </motion.span>
-                </motion.div>
-              ))}
-            </motion.div>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div
+                        className="
+                          flex h-12 w-12
+                          shrink-0
+                          items-center
+                          justify-center
+                          overflow-hidden
+                          rounded-xl
+                          border
+                          border-slate-200
+                          bg-slate-50
+                          dark:border-slate-700
+                          dark:bg-slate-800
+                        "
+                      >
+                        {item.image ? (
+                          <img
+                            src={
+                              item.image
+                            }
+                            alt={
+                              item.name
+                            }
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <ImageIcon className="h-5 w-5 text-slate-400" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="line-clamp-1 text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          {
+                            item.name
+                          }
+                        </p>
+
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          ₹
+                          {Number(
+                            item.price ||
+                              0
+                          ).toFixed(
+                            2
+                          )}{" "}
+                          ×{" "}
+                          {
+                            item.quantity
+                          }
+                        </p>
+                      </div>
+                    </div>
+
+                    <span
+                      className="
+                        shrink-0
+                        rounded-lg
+                        bg-indigo-50
+                        px-2.5 py-1.5
+                        text-xs
+                        font-bold
+                        text-indigo-600
+                        dark:bg-indigo-950/50
+                        dark:text-indigo-400
+                      "
+                    >
+                      ₹
+                      {(
+                        Number(
+                          item.price ||
+                            0
+                        ) *
+                        Number(
+                          item.quantity ||
+                            0
+                        )
+                      ).toFixed(
+                        2
+                      )}
+                    </span>
+                  </motion.div>
+                )
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* -------------------------------------------------- */}
-      {/* FOOTER */}
-      {/* -------------------------------------------------- */}
+      {/* =====================================================
+          FOOTER
+      ====================================================== */}
 
       <div
         className="
-          relative
-          flex
-          items-center
+          flex items-center
           justify-between
           gap-4
           border-t
@@ -1231,22 +1436,9 @@ export default function AdminOrderCard({
           dark:to-indigo-950/20
         "
       >
-        {/* Payment */}
-        <motion.div
-          initial={{
-            opacity: 0,
-            x: -10,
-          }}
-          animate={{
-            opacity: 1,
-            x: 0,
-          }}
-          transition={{
-            delay: 0.45,
-          }}
+        <div
           className="
-            flex
-            min-w-0
+            flex min-w-0
             items-center
             text-xs
             text-slate-500
@@ -1256,8 +1448,7 @@ export default function AdminOrderCard({
           <div
             className="
               mr-2.5
-              flex
-              h-8 w-8
+              flex h-8 w-8
               shrink-0
               items-center
               justify-center
@@ -1274,40 +1465,14 @@ export default function AdminOrderCard({
           <span className="truncate">
             {paymentMethod}
           </span>
-        </motion.div>
+        </div>
 
-        {/* Total */}
-        <motion.div
-          key={totalAmount}
-          initial={{
-            opacity: 0,
-            y: 8,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
-          transition={{
-            duration: 0.3,
-          }}
-          className="shrink-0 text-right"
-        >
-          <span
-            className="
-              mr-2
-              text-[11px]
-              font-medium
-              text-slate-500
-              dark:text-slate-400
-            "
-          >
+        <div className="shrink-0 text-right">
+          <span className="mr-2 text-[11px] font-medium text-slate-500 dark:text-slate-400">
             Total
           </span>
 
-          <motion.span
-            whileHover={{
-              scale: 1.04,
-            }}
+          <span
             className="
               bg-gradient-to-r
               from-indigo-600
@@ -1316,38 +1481,15 @@ export default function AdminOrderCard({
               text-lg
               font-extrabold
               text-transparent
-              dark:from-indigo-400
-              dark:to-violet-400
             "
           >
-            ${Number(totalAmount || 0).toFixed(2)}
-          </motion.span>
-        </motion.div>
+            ₹
+            {Number(
+              totalAmount || 0
+            ).toFixed(2)}
+          </span>
+        </div>
       </div>
-
-      {/* Bottom subtle shine */}
-      <motion.div
-        className="
-          pointer-events-none
-          absolute
-          bottom-0
-          left-0
-          h-px
-          w-full
-          bg-gradient-to-r
-          from-transparent
-          via-indigo-500/30
-          to-transparent
-        "
-        animate={{
-          opacity: [0.2, 0.7, 0.2],
-        }}
-        transition={{
-          duration: 3,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
     </motion.div>
   );
 }

@@ -1,122 +1,93 @@
 import { getToken } from "next-auth/jwt";
-import {
-  NextRequest,
-  NextResponse,
-} from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function proxy(
-  req: NextRequest,
-) {
+const AUTH_SECRET =
+  process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+
+const LOGIN_PATH = "/login";
+const UNAUTHORIZED_PATH = "/unauthorized";
+
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ============================================
-  // PUBLIC PAGE ROUTES
-  // ============================================
+  // --------------------------------------------
+  // 1. Determine required role from URL
+  // --------------------------------------------
 
-  if (
-    pathname === "/login" ||
-    pathname === "/register" ||
-    pathname === "/unauthorized" ||
-    pathname === "/edit-role-mobile"
-  ) {
+  let requiredRole: "user" | "admin" | "deliveryboy" | null = null;
+
+  if (pathname.startsWith("/user")) {
+    requiredRole = "user";
+  } else if (pathname.startsWith("/delivery")) {
+    requiredRole = "deliveryboy";
+  } else if (pathname.startsWith("/admin")) {
+    requiredRole = "admin";
+  }
+
+  // Should normally never happen because of matcher,
+  // but avoids unnecessary work.
+  if (!requiredRole) {
     return NextResponse.next();
   }
 
-  // ============================================
-  // ONLY PROTECT APPLICATION PAGES
-  // ============================================
+  // --------------------------------------------
+  // 2. Check auth secret
+  // --------------------------------------------
 
-  const isProtectedPage =
-    pathname.startsWith("/user") ||
-    pathname.startsWith("/delivery") ||
-    pathname.startsWith("/admin");
-
-  if (!isProtectedPage) {
-    return NextResponse.next();
-  }
-
-  // ============================================
-  // AUTHENTICATION
-  // ============================================
-
-  const secret =
-    process.env.AUTH_SECRET ||
-    process.env.NEXTAUTH_SECRET;
-
-  if (!secret) {
-    console.error(
-      "❌ Auth secret is missing",
-    );
+  if (!AUTH_SECRET) {
+    console.error("AUTH_SECRET is missing");
 
     return NextResponse.redirect(
-      new URL("/login", req.url),
+      new URL(LOGIN_PATH, req.url)
     );
   }
+
+  // --------------------------------------------
+  // 3. Read JWT token
+  // --------------------------------------------
 
   const token = await getToken({
     req,
-    secret,
-    secureCookie:
-      process.env.NODE_ENV === "production",
+    secret: AUTH_SECRET,
   });
 
-  // ============================================
-  // NOT LOGGED IN
-  // ============================================
+  // --------------------------------------------
+  // 4. Not authenticated
+  // --------------------------------------------
 
   if (!token) {
-    const loginUrl = new URL(
-      "/login",
-      req.url,
-    );
+    const loginUrl = new URL(LOGIN_PATH, req.url);
 
     loginUrl.searchParams.set(
       "callbackUrl",
-      pathname,
+      pathname
     );
 
     return NextResponse.redirect(loginUrl);
   }
 
-  // ============================================
-  // ROLE
-  // ============================================
+  // --------------------------------------------
+  // 5. Get role
+  // --------------------------------------------
 
   const role =
     typeof token.role === "string"
       ? token.role.trim().toLowerCase()
       : "";
 
-  // ============================================
-  // ROLE PROTECTION
-  // ============================================
+  // --------------------------------------------
+  // 6. Check role
+  // --------------------------------------------
 
-  if (
-    pathname.startsWith("/user") &&
-    role !== "user"
-  ) {
+  if (role !== requiredRole) {
     return NextResponse.redirect(
-      new URL("/unauthorized", req.url),
+      new URL(UNAUTHORIZED_PATH, req.url)
     );
   }
 
-  if (
-    pathname.startsWith("/delivery") &&
-    role !== "deliveryboy"
-  ) {
-    return NextResponse.redirect(
-      new URL("/unauthorized", req.url),
-    );
-  }
-
-  if (
-    pathname.startsWith("/admin") &&
-    role !== "admin"
-  ) {
-    return NextResponse.redirect(
-      new URL("/unauthorized", req.url),
-    );
-  }
+  // --------------------------------------------
+  // 7. Authorized
+  // --------------------------------------------
 
   return NextResponse.next();
 }

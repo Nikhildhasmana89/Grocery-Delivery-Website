@@ -44,7 +44,7 @@ function MyOrder() {
     const matchesFilter =
       activeFilter === 'All Orders' || order?.status === activeFilter
 
-    const orderIdStr = String(order?._id || order?.id || '')
+    const orderIdStr = String(order?._id || (order as any)?.id || '')
     const matchesSearch =
       orderIdStr.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order?.items?.some((item: any) =>
@@ -168,7 +168,7 @@ function MyOrder() {
           <motion.div layout className="space-y-4">
             {filteredOrders.map((order) => (
               <UserOrderCard
-                key={order._id || order.id}
+                key={order._id || (order as any).id}
                 order={order}
                 onBuyAgain={() => handleBuyAgain(order)}
               />

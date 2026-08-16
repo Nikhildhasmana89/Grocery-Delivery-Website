@@ -13,6 +13,18 @@ export const {
   auth,
 } = NextAuth({
   // ============================================
+  // DEBUG
+  // ============================================
+
+  debug: process.env.NODE_ENV === "development",
+
+  // ============================================
+  // TRUST HOST
+  // ============================================
+
+  trustHost: true,
+
+  // ============================================
   // PROVIDERS
   // ============================================
 
@@ -22,6 +34,8 @@ export const {
     // ==========================================
 
     Credentials({
+      name: "Credentials",
+
       credentials: {
         email: {
           label: "Email",
@@ -35,92 +49,110 @@ export const {
       },
 
       async authorize(credentials) {
-        const email =
-          typeof credentials?.email === "string"
-            ? credentials.email
-                .trim()
-                .toLowerCase()
-            : "";
+        try {
+          const email =
+            typeof credentials?.email ===
+            "string"
+              ? credentials.email
+                  .trim()
+                  .toLowerCase()
+              : "";
 
-        const password =
-          typeof credentials?.password === "string"
-            ? credentials.password
-            : "";
+          const password =
+            typeof credentials?.password ===
+            "string"
+              ? credentials.password
+              : "";
 
-        if (!email || !password) {
-          throw new Error(
-            "Please provide both email and password.",
+          if (!email || !password) {
+            throw new Error(
+              "Please provide both email and password.",
+            );
+          }
+
+          // --------------------------------------
+          // DATABASE
+          // --------------------------------------
+
+          await connectDB();
+
+          // --------------------------------------
+          // FIND USER
+          // --------------------------------------
+
+          const user =
+            await User.findOne({
+              email,
+            }).select(
+              "_id email name password role image mobile roleSelected",
+            );
+
+          if (!user) {
+            throw new Error(
+              "Invalid email or password.",
+            );
+          }
+
+          // --------------------------------------
+          // GOOGLE-ONLY ACCOUNT
+          // --------------------------------------
+
+          if (!user.password) {
+            throw new Error(
+              "Please sign in with Google.",
+            );
+          }
+
+          // --------------------------------------
+          // PASSWORD CHECK
+          // --------------------------------------
+
+          const isMatch =
+            await bcrypt.compare(
+              password,
+              user.password,
+            );
+
+          if (!isMatch) {
+            throw new Error(
+              "Invalid email or password.",
+            );
+          }
+
+          // --------------------------------------
+          // RETURN USER
+          // --------------------------------------
+
+          return {
+            id: user._id.toString(),
+
+            email:
+              user.email ?? "",
+
+            name:
+              user.name ?? "",
+
+            role:
+              user.role ?? "user",
+
+            image:
+              user.image ?? "",
+
+            mobile:
+              user.mobile ?? "",
+
+            roleSelected:
+              user.roleSelected ??
+              false,
+          };
+        } catch (error) {
+          console.error(
+            "❌ Credentials authorize error:",
+            error,
           );
+
+          throw error;
         }
-
-        // ========================================
-        // DATABASE
-        // ========================================
-
-        await connectDB();
-
-        // ========================================
-        // ONLY FETCH REQUIRED FIELDS
-        // ========================================
-
-        const user = await User.findOne({
-          email,
-        }).select(
-          "_id email name password role image mobile roleSelected",
-        );
-
-        if (!user) {
-          throw new Error(
-            "Invalid email or password.",
-          );
-        }
-
-        // ========================================
-        // GOOGLE-ONLY ACCOUNT
-        // ========================================
-
-        if (!user.password) {
-          throw new Error(
-            "Please sign in with Google.",
-          );
-        }
-
-        // ========================================
-        // PASSWORD CHECK
-        // ========================================
-
-        const isMatch =
-          await bcrypt.compare(
-            password,
-            user.password,
-          );
-
-        if (!isMatch) {
-          throw new Error(
-            "Invalid email or password.",
-          );
-        }
-
-        // ========================================
-        // RETURN MINIMAL USER
-        // ========================================
-
-        return {
-          id: user._id.toString(),
-
-          email: user.email,
-
-          name: user.name,
-
-          role: user.role,
-
-          image: user.image ?? "",
-
-          mobile: user.mobile ?? "",
-
-          roleSelected:
-            user.roleSelected ?? false,
-        };
       },
     }),
 
@@ -130,18 +162,21 @@ export const {
 
     Google({
       clientId:
-        process.env.GOOGLE_CLIENT_ID!,
+        process.env.GOOGLE_CLIENT_ID ?? "",
 
       clientSecret:
-        process.env.GOOGLE_CLIENT_SECRET!,
+        process.env.GOOGLE_CLIENT_SECRET ?? "",
 
       authorization: {
         params: {
-          prompt: "select_account",
+          prompt:
+            "select_account",
 
-          access_type: "offline",
+          access_type:
+            "offline",
 
-          response_type: "code",
+          response_type:
+            "code",
         },
       },
     }),
@@ -161,10 +196,12 @@ export const {
       account,
     }) {
       // ----------------------------------------
-      // GOOGLE
+      // GOOGLE LOGIN
       // ----------------------------------------
 
-      if (account?.provider === "google") {
+      if (
+        account?.provider === "google"
+      ) {
         try {
           await connectDB();
 
@@ -174,6 +211,10 @@ export const {
               .toLowerCase();
 
           if (!email) {
+            console.error(
+              "❌ Google account has no email",
+            );
+
             return false;
           }
 
@@ -185,44 +226,60 @@ export const {
             );
 
           // --------------------------------------
-          // CREATE USER
+          // CREATE GOOGLE USER
           // --------------------------------------
 
           if (!dbUser) {
             dbUser =
               await User.create({
-                name: user.name ?? "",
+                name:
+                  user.name ?? "",
 
                 email,
 
-                image: user.image ?? "",
+                image:
+                  user.image ?? "",
 
                 role: "user",
 
-                roleSelected: false,
+                roleSelected:
+                  false,
               });
+
+            console.log(
+              "✅ Google user created:",
+              dbUser._id,
+            );
           }
 
           // --------------------------------------
-          // COPY DB DATA TO JWT USER
+          // COPY DATABASE USER DATA
           // --------------------------------------
 
           user.id =
             dbUser._id.toString();
 
-          (user as any).role =
-            dbUser.role;
+          (
+            user as any
+          ).role =
+            dbUser.role ??
+            "user";
 
-          (user as any).mobile =
+          (
+            user as any
+          ).mobile =
             dbUser.mobile ?? "";
 
-          (user as any).roleSelected =
-            dbUser.roleSelected ?? false;
+          (
+            user as any
+          ).roleSelected =
+            dbUser.roleSelected ??
+            false;
 
           return true;
         } catch (error) {
           console.error(
-            "Google sign-in error:",
+            "❌ Google sign-in error:",
             error,
           );
 
@@ -248,29 +305,34 @@ export const {
       // ----------------------------------------
 
       if (user) {
-        token.id = user.id;
+        token.id =
+          user.id;
 
         token.email =
-          user.email;
+          user.email ?? "";
 
         token.name =
-          user.name;
+          user.name ?? "";
 
         token.picture =
-          user.image;
+          user.image ?? "";
 
         token.role =
-          (user as any).role;
+          (user as any).role ??
+          "user";
 
         token.mobile =
-          (user as any).mobile;
+          (user as any).mobile ??
+          "";
 
         token.roleSelected =
-          (user as any).roleSelected;
+          (user as any)
+            .roleSelected ??
+          false;
       }
 
       // ----------------------------------------
-      // CLIENT SESSION UPDATE
+      // SESSION UPDATE
       // ----------------------------------------
 
       if (
@@ -278,14 +340,16 @@ export const {
         session
       ) {
         if (
-          session.role !== undefined
+          session.role !==
+          undefined
         ) {
           token.role =
             session.role;
         }
 
         if (
-          session.mobile !== undefined
+          session.mobile !==
+          undefined
         ) {
           token.mobile =
             session.mobile;
@@ -313,25 +377,46 @@ export const {
     }) {
       if (session.user) {
         session.user.id =
-          token.id as string;
+          String(
+            token.id ?? "",
+          );
 
         session.user.email =
-          token.email as string;
+          String(
+            token.email ?? "",
+          );
 
         session.user.name =
-          token.name as string;
+          String(
+            token.name ?? "",
+          );
 
         session.user.image =
-          token.picture as string;
+          String(
+            token.picture ?? "",
+          );
 
-        (session.user as any).role =
-          token.role as string;
+        (
+          session.user as any
+        ).role =
+          String(
+            token.role ??
+              "user",
+          );
 
-        (session.user as any).mobile =
-          token.mobile as string;
+        (
+          session.user as any
+        ).mobile =
+          String(
+            token.mobile ?? "",
+          );
 
-        (session.user as any).roleSelected =
-          token.roleSelected as boolean;
+        (
+          session.user as any
+        ).roleSelected =
+          Boolean(
+            token.roleSelected,
+          );
       }
 
       return session;
@@ -344,7 +429,6 @@ export const {
 
   pages: {
     signIn: "/login",
-
     error: "/login",
   },
 

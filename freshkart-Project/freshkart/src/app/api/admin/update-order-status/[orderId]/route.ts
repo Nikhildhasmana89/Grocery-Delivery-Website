@@ -6,6 +6,11 @@ import { NextRequest, NextResponse } from "next/server";
 import emitEventHandler from "@/lib/emitEventHandler";
 import crypto from "crypto";
 
+type OrderStatus =
+  | "pending"
+  | "out of delivery"
+  | "delivered";
+
 export async function POST(
   req: NextRequest,
   {
@@ -22,13 +27,24 @@ export async function POST(
     // ============================================
 
     const { orderId } = await params;
-    const { status } = await req.json();
 
-    console.log("========================================");
-    console.log("========== UPDATE ORDER STATUS ==========");
+    const body = await req.json();
+
+    const status = String(
+      body?.status ?? "",
+    ).trim() as OrderStatus;
+
+    console.log(
+      "========================================",
+    );
+    console.log(
+      "========== UPDATE ORDER STATUS ==========",
+    );
     console.log("Order ID:", orderId);
     console.log("New Status:", status);
-    console.log("========================================");
+    console.log(
+      "========================================",
+    );
 
     // ============================================
     // VALIDATION
@@ -38,13 +54,16 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error: "orderId and status are required",
+          error:
+            "orderId and status are required",
         },
-        { status: 400 },
+        {
+          status: 400,
+        },
       );
     }
 
-    const allowedStatuses = [
+    const allowedStatuses: OrderStatus[] = [
       "pending",
       "out of delivery",
       "delivered",
@@ -57,7 +76,9 @@ export async function POST(
           error: "Invalid order status",
           allowedStatuses,
         },
-        { status: 400 },
+        {
+          status: 400,
+        },
       );
     }
 
@@ -65,7 +86,8 @@ export async function POST(
     // FIND ORDER
     // ============================================
 
-    const order = await Order.findById(orderId);
+    const order =
+      await Order.findById(orderId);
 
     if (!order) {
       return NextResponse.json(
@@ -73,13 +95,26 @@ export async function POST(
           success: false,
           error: "Order not found",
         },
-        { status: 404 },
+        {
+          status: 404,
+        },
       );
     }
 
-    console.log("Order found:", order._id);
-    console.log("Current status:", order.status);
-    console.log("Requested status:", status);
+    console.log(
+      "Order found:",
+      order._id,
+    );
+
+    console.log(
+      "Current status:",
+      order.status,
+    );
+
+    console.log(
+      "Requested status:",
+      status,
+    );
 
     // ============================================
     // OLD ORDER FIX
@@ -113,30 +148,41 @@ export async function POST(
           error:
             "A delivered order cannot be moved backwards.",
         },
-        { status: 400 },
+        {
+          status: 400,
+        },
       );
     }
 
     // ============================================
-    // OUT OF DELIVERY
+    // OUT FOR DELIVERY
     // ============================================
 
-    if (status === "out of delivery") {
+    if (
+      status === "out of delivery"
+    ) {
       console.log(
         "🚚 Making order available to delivery boys...",
       );
 
-      // ------------------------------------------
+      // ==========================================
       // CHECK EXISTING ACTIVE ASSIGNMENT
-      // ------------------------------------------
+      // ==========================================
 
       const existingAssignment =
         await DeliveryAssignment.findOne({
           order: order._id,
           status: {
-            $in: ["broadcasted", "assigned"],
+            $in: [
+              "broadcasted",
+              "assigned",
+            ],
           },
-        });
+        }).lean();
+
+      // ==========================================
+      // EXISTING ASSIGNMENT
+      // ==========================================
 
       if (existingAssignment) {
         console.log(
@@ -144,46 +190,158 @@ export async function POST(
           existingAssignment._id,
         );
 
-        order.status = "out of delivery";
+        // ----------------------------------------
+        // ASSIGNMENT ALREADY ACCEPTED
+        // ----------------------------------------
+
+        if (
+          existingAssignment.status ===
+          "assigned"
+        ) {
+          order.status =
+            "out of delivery";
+
+          order.assignment =
+            existingAssignment._id;
+
+          order.assignedDeliveryBoy =
+            existingAssignment.assignedTo ??
+            null;
+
+          await order.save();
+
+          console.log(
+            "✅ Order is already assigned to delivery boy:",
+            existingAssignment.assignedTo,
+          );
+
+          // Notify customer about the
+          // current order status.
+          await notifyCustomerStatus(
+            order,
+            "out of delivery",
+          );
+
+          return NextResponse.json(
+            {
+              success: true,
+              message:
+                "Order is already assigned",
+              order,
+              assignment:
+                existingAssignment,
+            },
+            {
+              status: 200,
+            },
+          );
+        }
+
+        // ----------------------------------------
+        // EXISTING BROADCASTED ASSIGNMENT
+        // ----------------------------------------
+
+        order.status =
+          "out of delivery";
+
         order.assignment =
           existingAssignment._id;
 
         order.assignedDeliveryBoy =
-          existingAssignment.assignedTo || null;
+          null;
 
         await order.save();
+
+        console.log(
+          "📢 Existing broadcasted assignment found.",
+        );
+
+        // Re-fetch the delivery boys that
+        // this assignment was broadcast to.
+        const broadcastedDeliveryBoyIds =
+          (
+            existingAssignment.broadcastedTo ??
+            []
+          ).map((id: any) => String(id));
+
+        const deliveryBoys =
+          await User.find({
+            _id: {
+              $in:
+                broadcastedDeliveryBoyIds,
+            },
+            role: {
+              $in: [
+                "deliveryBoy",
+                "deliveryboy",
+                "delivery_boy",
+              ],
+            },
+          }).select(
+            "_id name email mobile socketId isOnline",
+          );
+
+        console.log(
+          "Delivery boys for existing assignment:",
+          deliveryBoys.length,
+        );
+
+        // ----------------------------------------
+        // RE-SEND SOCKET NOTIFICATION (ROOM BROADCAST)
+        // ----------------------------------------
+
+        const notificationData = {
+          assignmentId: String(existingAssignment._id),
+          orderId: String(order._id),
+          orderRequestId: order.orderRequestId,
+          status: "broadcasted",
+          message: "New delivery order available",
+        };
+
+        // Broadcast to delivery-boys room in background (non-blocking)
+        emitEventHandler("new-assignment", notificationData, { room: "delivery-boys" }).catch((err) =>
+          console.error("❌ Socket broadcast error:", err)
+        );
+
+        // Also notify each broadcasted delivery boy directly in background
+        for (const deliveryBoy of deliveryBoys) {
+          emitEventHandler("new-assignment", notificationData, { userId: String(deliveryBoy._id) }).catch(() => {});
+          if (deliveryBoy.socketId) {
+            emitEventHandler("new-assignment", notificationData, deliveryBoy.socketId).catch(() => {});
+          }
+        }
+
+        // Notify customer in background
+        notifyCustomerStatus(order, "out of delivery").catch(() => {});
 
         return NextResponse.json(
           {
             success: true,
             message:
-              existingAssignment.status ===
-              "assigned"
-                ? "Order is already assigned"
-                : "Order is already available",
+              "Order is already available to delivery boys",
             order,
-            assignment: existingAssignment,
+            assignment:
+              existingAssignment,
           },
-          { status: 200 },
+          {
+            status: 200,
+          },
         );
       }
 
-      // ------------------------------------------
-      // FIND ALL DELIVERY BOYS
-      // ------------------------------------------
-      //
-      // NO:
-      // $near
-      // isOnline
-      // socketId
-      // busy filtering
-      //
-      // Every delivery boy can see the order.
-      //
+      // ==========================================
+      // FIND DELIVERY BOYS
+      // ==========================================
 
       const deliveryBoys =
         await User.find({
-          role: "deliveryBoy",
+          role: {
+            $in: [
+              "deliveryBoy",
+              "deliveryboy",
+              "delivery_boy",
+            ],
+          },
         }).select(
           "_id name email mobile socketId isOnline",
         );
@@ -193,16 +351,25 @@ export async function POST(
         deliveryBoys.length,
       );
 
-      // ------------------------------------------
+      // ==========================================
       // NO DELIVERY BOYS
-      // ------------------------------------------
+      // ==========================================
 
       if (deliveryBoys.length === 0) {
-        order.status = "out of delivery";
+        order.status =
+          "out of delivery";
+
         order.assignment = null;
-        order.assignedDeliveryBoy = null;
+
+        order.assignedDeliveryBoy =
+          null;
 
         await order.save();
+
+        notifyCustomerStatus(
+          order,
+          "out of delivery",
+        ).catch(() => {});
 
         return NextResponse.json(
           {
@@ -211,22 +378,31 @@ export async function POST(
               "Order marked out for delivery, but no delivery boys are registered.",
             order,
           },
-          { status: 200 },
+          {
+            status: 200,
+          },
         );
       }
 
-      // ------------------------------------------
-      // ALL DELIVERY BOY IDS
-      // ------------------------------------------
+      // ==========================================
+      // DELIVERY BOY IDS
+      // ==========================================
 
       const deliveryBoyIds =
         deliveryBoys.map(
           (boy) => boy._id,
         );
 
-      // ------------------------------------------
+      console.log(
+        "Broadcasting to delivery boys:",
+        deliveryBoyIds.map((id) =>
+          String(id),
+        ),
+      );
+
+      // ==========================================
       // CREATE BROADCAST ASSIGNMENT
-      // ------------------------------------------
+      // ==========================================
 
       const deliveryAssignment =
         await DeliveryAssignment.create({
@@ -247,33 +423,44 @@ export async function POST(
         deliveryAssignment._id,
       );
 
-      // ------------------------------------------
-      // UPDATE ORDER
-      // ------------------------------------------
+      console.log(
+        "Broadcasted To:",
+        deliveryBoyIds.map((id) =>
+          String(id),
+        ),
+      );
 
-      order.status = "out of delivery";
+      // ==========================================
+      // UPDATE ORDER
+      // ==========================================
+
+      order.status =
+        "out of delivery";
 
       order.assignment =
         deliveryAssignment._id;
 
-      order.assignedDeliveryBoy = null;
+      order.assignedDeliveryBoy =
+        null;
 
       await order.save();
 
       console.log(
-        "Order saved successfully",
+        "✅ Order saved successfully",
       );
 
-      // ------------------------------------------
-      // SOCKET NOTIFICATION
-      // ------------------------------------------
+      // ==========================================
+      // SOCKET NOTIFICATION (ROOM & NON-BLOCKING)
+      // ==========================================
 
       const notificationData = {
         assignmentId:
-          deliveryAssignment._id.toString(),
+          String(
+            deliveryAssignment._id,
+          ),
 
         orderId:
-          order._id.toString(),
+          String(order._id),
 
         orderRequestId:
           order.orderRequestId,
@@ -284,39 +471,32 @@ export async function POST(
           "New delivery order available",
       };
 
-      /*
-       * Socket notification only goes to
-       * currently connected users.
-       *
-       * But broadcastedTo contains EVERY
-       * delivery boy, so offline users can
-       * still see the order when they open
-       * the dashboard.
-       */
+      console.log(
+        "📡 Sending new-assignment notifications in background...",
+      );
 
+      // Broadcast to delivery-boys room immediately
+      emitEventHandler("new-assignment", notificationData, { room: "delivery-boys" }).catch((err) =>
+        console.error("❌ Socket broadcast error:", err)
+      );
+
+      // Also send to individual delivery boy rooms/socketIds in background
       for (const deliveryBoy of deliveryBoys) {
-        if (!deliveryBoy.socketId) {
-          continue;
-        }
-
-        try {
-          await emitEventHandler(
-            "new-assignment",
-            notificationData,
-            deliveryBoy.socketId,
-          );
-        } catch (socketError) {
-          console.error(
-            "Socket notification failed:",
-            deliveryBoy._id,
-            socketError,
-          );
+        emitEventHandler("new-assignment", notificationData, { userId: String(deliveryBoy._id) }).catch(() => {});
+        if (deliveryBoy.socketId) {
+          emitEventHandler("new-assignment", notificationData, deliveryBoy.socketId).catch(() => {});
         }
       }
 
-      // ------------------------------------------
-      // RESPONSE
-      // ------------------------------------------
+      // Customer status notification in background
+      notifyCustomerStatus(
+        order,
+        "out of delivery",
+      ).catch(() => {});
+
+      // ==========================================
+      // RESPONSE (FAST RETURN)
+      // ==========================================
 
       return NextResponse.json(
         {
@@ -325,26 +505,49 @@ export async function POST(
           message:
             "Order is now available to all delivery boys",
 
-          orderId: order._id,
+          orderId:
+            order._id,
 
           orderRequestId:
             order.orderRequestId,
 
-          status: order.status,
+          status:
+            order.status,
 
           assignment:
             deliveryAssignment,
 
           broadcastedTo:
-            deliveryBoys.map((boy) => ({
-              id: boy._id,
-              name: boy.name,
-              email: boy.email,
-              mobile: boy.mobile,
-              isOnline: boy.isOnline,
-            })),
+            deliveryBoys.map(
+              (boy) => ({
+                id: String(
+                  boy._id,
+                ),
+
+                name:
+                  boy.name,
+
+                email:
+                  boy.email,
+
+                mobile:
+                  boy.mobile,
+
+                isOnline:
+                  Boolean(
+                    boy.isOnline,
+                  ),
+
+                hasSocket:
+                  Boolean(
+                    boy.socketId,
+                  ),
+              }),
+            ),
         },
-        { status: 200 },
+        {
+          status: 200,
+        },
       );
     }
 
@@ -352,36 +555,57 @@ export async function POST(
     // DELIVERED
     // ============================================
 
-    if (status === "delivered") {
-      order.status = "delivered";
+    if (
+      status === "delivered"
+    ) {
+      order.status =
+        "delivered";
 
-      /*
-       * If an assignment exists, mark it delivered.
-       */
+      // ------------------------------------------
+      // UPDATE ASSIGNMENT
+      // ------------------------------------------
+
       if (order.assignment) {
-        await DeliveryAssignment.findByIdAndUpdate(
-          order.assignment,
-          {
-            $set: {
-              status: "delivered",
-              deliveredAt: new Date(),
+        const updatedAssignment =
+          await DeliveryAssignment.findByIdAndUpdate(
+            order.assignment,
+            {
+              $set: {
+                status: "delivered",
+                deliveredAt:
+                  new Date(),
+              },
             },
-          },
-          {
-            returnDocument: "after",
-          },
+            {
+              returnDocument:
+                "after",
+            },
+          ).lean();
+
+        console.log(
+          "✅ Assignment marked delivered:",
+          updatedAssignment?._id,
         );
       }
 
       await order.save();
 
+      // Notify customer in background
+      notifyCustomerStatus(
+        order,
+        "delivered",
+      ).catch(() => {});
+
       return NextResponse.json(
         {
           success: true,
-          message: "Order delivered successfully",
+          message:
+            "Order delivered successfully",
           order,
         },
-        { status: 200 },
+        {
+          status: 200,
+        },
       );
     }
 
@@ -389,36 +613,101 @@ export async function POST(
     // NORMAL STATUS
     // ============================================
 
-    order.status = status;
+    order.status =
+      status;
 
     await order.save();
+
+    // Notify customer about status in background.
+    notifyCustomerStatus(
+      order,
+      status,
+    ).catch(() => {});
 
     return NextResponse.json(
       {
         success: true,
+
         message:
           "Order status updated successfully",
+
         order,
       },
-      { status: 200 },
+      {
+        status: 200,
+      },
     );
   } catch (error) {
     console.error(
-      "❌ Update order status error:",
+      "❌ UPDATE ORDER STATUS ERROR:",
       error,
     );
 
     return NextResponse.json(
       {
         success: false,
+
         error:
           "Failed to update order status",
+
         details:
           error instanceof Error
             ? error.message
             : "Unknown error",
       },
-      { status: 500 },
+      {
+        status: 500,
+      },
+    );
+  }
+}
+
+// ==================================================
+// CUSTOMER STATUS NOTIFICATION
+// ==================================================
+
+async function notifyCustomerStatus(
+  order: any,
+  status: string,
+) {
+  try {
+    const customerId =
+      order.user
+        ? String(
+            order.user._id ??
+              order.user,
+          )
+        : null;
+
+    if (!customerId) {
+      return;
+    }
+
+    await emitEventHandler(
+      "order-status-update",
+      {
+        orderId:
+          String(order._id),
+
+        orderRequestId:
+          order.orderRequestId,
+
+        status,
+
+        message:
+          "Order status updated",
+      },
+      { userId: customerId },
+    );
+
+    console.log(
+      "✅ Customer status notification triggered for:",
+      customerId,
+    );
+  } catch (error) {
+    console.error(
+      "❌ Customer status notification failed:",
+      error,
     );
   }
 }

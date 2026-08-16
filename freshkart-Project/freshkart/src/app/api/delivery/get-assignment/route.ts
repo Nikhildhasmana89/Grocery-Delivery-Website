@@ -1,14 +1,15 @@
-import DeliveryAssignment from "@/models/deliveryAssignment.model";
-import { NextResponse } from "next/server";
-import connectDB from "@/lib/db";
 import { auth } from "@/auth";
+import connectDB from "@/lib/db";
+import DeliveryAssignment from "@/models/deliveryAssignment.model";
+import Order from "@/models/order.model";
+import User from "@/models/user.model";
+import mongoose from "mongoose";
+import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
-    await connectDB();
-
     // ============================================
-    // AUTHENTICATION
+    // 1. AUTHENTICATE FIRST
     // ============================================
 
     const session = await auth();
@@ -25,52 +26,114 @@ export async function GET() {
 
     const deliveryBoyId = session.user.id;
 
-    console.log("========================================");
-    console.log("GET DELIVERY ASSIGNMENTS");
-    console.log("Delivery Boy:", deliveryBoyId);
-    console.log("========================================");
-
-    // ============================================
-    // GET AVAILABLE + ACCEPTED ASSIGNMENTS
-    // ============================================
-
-    const assignments = await DeliveryAssignment.find({
-      $or: [
-        // ----------------------------------------
-        // AVAILABLE ORDERS
-        // ----------------------------------------
+    if (!mongoose.Types.ObjectId.isValid(deliveryBoyId)) {
+      return NextResponse.json(
         {
-          status: "broadcasted",
-          broadcastedTo: deliveryBoyId,
-          assignedTo: null,
+          success: false,
+          message: "Invalid Delivery Boy ID format",
         },
+        { status: 400 },
+      );
+    }
 
-        // ----------------------------------------
-        // ORDERS ALREADY ACCEPTED BY THIS BOY
-        // ----------------------------------------
-        {
-          status: "assigned",
-          assignedTo: deliveryBoyId,
-        },
-      ],
-    })
-      .populate({
-        path: "order",
-        populate: {
-          path: "user",
-          select: "name email mobile",
-        },
-      })
-      .sort({ createdAt: -1 })
-      .lean();
-
-    console.log(
-      "Available/assigned deliveries:",
-      assignments.length,
-    );
+    const deliveryBoyObjectId = new mongoose.Types.ObjectId(deliveryBoyId);
 
     // ============================================
-    // RESPONSE
+    // 2. DATABASE & MODEL REGISTRATION
+    // ============================================
+
+    await connectDB();
+
+    // Ensure referenced models are registered in Mongoose schema cache
+    void User;
+    void Order;
+
+    // ============================================
+    // 3. GET ASSIGNMENTS
+    // ============================================
+
+    const assignments = await DeliveryAssignment.aggregate([
+      {
+        $match: {
+          $or: [
+            {
+              status: "broadcasted",
+              broadcastedTo: deliveryBoyObjectId,
+              assignedTo: null,
+            },
+            {
+              status: "assigned",
+              assignedTo: deliveryBoyObjectId,
+            },
+          ],
+        },
+      },
+
+      // Newest first
+      {
+        $sort: {
+          createdAt: -1,
+        },
+      },
+
+      // Get Order
+      {
+        $lookup: {
+          from: "orders",
+          localField: "order",
+          foreignField: "_id",
+          as: "order",
+        },
+      },
+
+      // Convert order array -> object
+      {
+        $unwind: {
+          path: "$order",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // Get User from Order
+      {
+        $lookup: {
+          from: "users",
+          localField: "order.user",
+          foreignField: "_id",
+          as: "orderUser",
+        },
+      },
+
+      // Convert user array -> object
+      {
+        $unwind: {
+          path: "$orderUser",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // Put user inside order
+      {
+        $set: {
+          "order.user": {
+            _id: "$orderUser._id",
+            name: "$orderUser.name",
+            email: "$orderUser.email",
+            mobile: "$orderUser.mobile",
+          },
+        },
+      },
+
+      // Remove unnecessary fields
+      {
+        $project: {
+          orderUser: 0,
+        },
+      },
+    ]);
+
+    // ============================================
+    // 4. RESPONSE
     // ============================================
 
     return NextResponse.json(
@@ -82,17 +145,17 @@ export async function GET() {
       { status: 200 },
     );
   } catch (error) {
-    console.error(
-      "❌ Get delivery assignment error:",
-      error,
-    );
+    console.error("❌ GET DELIVERY ASSIGNMENTS ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message: "Failed to fetch delivery assignments",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch delivery assignments",
       },
       { status: 500 },
     );
   }
-}
+}

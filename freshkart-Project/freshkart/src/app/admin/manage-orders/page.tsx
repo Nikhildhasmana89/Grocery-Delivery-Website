@@ -50,22 +50,26 @@ export default function ManageOrders() {
 
 
   useEffect(() => {
-  const socket = getSocket();
+    const socket = getSocket();
 
-  if (!socket) return;
+    if (!socket) return;
 
-  const handleNewOrder = (newOrder: IOrder) => {
-  console.log("🛒 New order received:", newOrder);
+    const handleNewOrder = (newOrder: IOrder) => {
+      console.log("🛒 New order received:", newOrder);
 
-    setOrders((prev) => [newOrder, ...prev]);
-  };
+      setOrders((prev) => [newOrder, ...prev]);
+    };
 
-  socket.on("new-order", handleNewOrder);
+    socket.on("new-order", handleNewOrder);
 
-  return () => {
-    socket.off("new-order", handleNewOrder);
-  };
-}, []);
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    return () => {
+      socket.off("new-order", handleNewOrder);
+    };
+  }, []);
 
   // --- Handle Status Update from Child Card ---
   const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {

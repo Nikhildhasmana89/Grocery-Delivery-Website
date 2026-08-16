@@ -13,34 +13,28 @@ declare global {
 const MONGODB_URL = process.env.MONGODB_URL;
 
 if (!MONGODB_URL) {
-  throw new Error(
-    "MONGODB_URL is not defined in environment variables",
-  );
+  throw new Error("MONGODB_URL is not defined in environment variables");
 }
 
-const cached: MongooseCache =
-  global.mongooseCache ?? {
-    conn: null,
-    promise: null,
-  };
+const cached: MongooseCache = global.mongooseCache ?? {
+  conn: null,
+  promise: null,
+};
 
 global.mongooseCache = cached;
 
 const connectDB = async (): Promise<typeof mongoose> => {
   // Already connected
-  if (
-    cached.conn &&
-    mongoose.connection.readyState === 1
-  ) {
+  if (cached.conn) {
     return cached.conn;
   }
 
-  // Connection is currently being established
+  // Connection already in progress
   if (cached.promise) {
     return cached.promise;
   }
 
-  console.log("🔌 Creating MongoDB connection...");
+  console.log("🔌 Connecting to MongoDB...");
 
   cached.promise = mongoose
     .connect(MONGODB_URL, {
@@ -48,26 +42,24 @@ const connectDB = async (): Promise<typeof mongoose> => {
 
       // Connection pool
       maxPoolSize: 10,
-      minPoolSize: 2,
 
-      // Don't wait forever when MongoDB is unavailable
+      // Keep this 0 unless you specifically need persistent idle connections
+      minPoolSize: 0,
+
+      // Fail faster when MongoDB cannot be reached
       serverSelectionTimeoutMS: 5000,
 
-      // Socket timeout
+      // Close inactive sockets after 45 seconds
       socketTimeoutMS: 45000,
     })
     .then((mongooseInstance) => {
       console.log("✅ MongoDB connected");
-
       cached.conn = mongooseInstance;
 
       return mongooseInstance;
     })
     .catch((error) => {
-      console.error(
-        "❌ MongoDB connection failed:",
-        error,
-      );
+      console.error("❌ MongoDB connection failed:", error);
 
       cached.promise = null;
       cached.conn = null;
