@@ -10,6 +10,7 @@ import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { getSocket } from "@/lib/socket";
 import { useSession } from "next-auth/react";
+import { UserInterface } from "./Nav";
 
 import {
   Bike,
@@ -27,6 +28,7 @@ import {
   AlertCircle,
   Wifi,
   WifiOff,
+  XCircle,
 } from "lucide-react";
 
 /* =========================================================
@@ -121,7 +123,7 @@ interface DeliveryAssignment {
    COMPONENT
 ========================================================= */
 
-function DeliveryBoyDashboard({ user }: { user?: any }) {
+function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
   const { data: session, status: sessionStatus } =
     useSession();
 
@@ -142,6 +144,9 @@ function DeliveryBoyDashboard({ user }: { user?: any }) {
     useState(false);
 
   const [acceptingId, setAcceptingId] =
+    useState<string | null>(null);
+
+  const [rejectingId, setRejectingId] =
     useState<string | null>(null);
 
   const [error, setError] =
@@ -417,6 +422,16 @@ function DeliveryBoyDashboard({ user }: { user?: any }) {
       fetchOrders();
     };
 
+    const handleOrderRejected = (
+      data: unknown,
+    ) => {
+      console.log(
+        "❌ ORDER REJECTED EVENT:",
+        data,
+      );
+      fetchOrders();
+    };
+
     /* -----------------------------------------------
        LISTENERS
     ------------------------------------------------ */
@@ -444,6 +459,11 @@ function DeliveryBoyDashboard({ user }: { user?: any }) {
     socket.on(
       "order-accepted",
       handleOrderAccepted,
+    );
+
+    socket.on(
+      "order-rejected",
+      handleOrderRejected,
     );
 
     /*
@@ -491,6 +511,11 @@ function DeliveryBoyDashboard({ user }: { user?: any }) {
       socket.off(
         "order-accepted",
         handleOrderAccepted,
+      );
+
+      socket.off(
+        "order-rejected",
+        handleOrderRejected,
       );
     };
   }, [
@@ -588,6 +613,90 @@ function DeliveryBoyDashboard({ user }: { user?: any }) {
       await fetchOrders();
     } finally {
       setAcceptingId(null);
+    }
+  };
+
+  /* =======================================================
+     REJECT ORDER
+  ======================================================= */
+
+  const handleReject = async (
+    orderId: string,
+    assignmentId?: string | null,
+  ) => {
+    if (
+      rejectingId ||
+      acceptingId ||
+      !deliveryBoyId
+    ) {
+      return;
+    }
+
+    const targetId = assignmentId || orderId;
+
+    try {
+      setRejectingId(orderId);
+      setError("");
+
+      console.log(
+        "❌ Rejecting order assignment:",
+        orderId,
+        "Assignment:",
+        targetId,
+      );
+
+      const response =
+        await axios.post(
+          `/api/delivery/assignment/${targetId}/reject-assignment`,
+          {},
+          {
+            timeout: 10000,
+          },
+        );
+
+      console.log(
+        "✅ Assignment rejected:",
+        response.data,
+      );
+
+      /*
+       * Immediately remove it from UI.
+       */
+
+      setOrders(
+        (previousOrders) =>
+          previousOrders.filter(
+            (order) =>
+              order._id !== orderId,
+          ),
+      );
+
+      await fetchOrders();
+    } catch (error: unknown) {
+      console.error(
+        "❌ Reject order error:",
+        error,
+      );
+
+      let message =
+        "Failed to reject delivery assignment.";
+
+      if (
+        axios.isAxiosError(error)
+      ) {
+        message =
+          error.response?.data
+            ?.message ||
+          error.response?.data
+            ?.error ||
+          message;
+      }
+
+      setError(message);
+
+      await fetchOrders();
+    } finally {
+      setRejectingId(null);
     }
   };
 
@@ -1227,50 +1336,91 @@ function DeliveryBoyDashboard({ user }: { user?: any }) {
                         )}
                       </div>
 
-                      {/* ACCEPT */}
+                      {/* ACCEPT & REJECT BUTTONS */}
 
-                      <motion.button
-                        whileTap={{
-                          scale: 0.97,
-                        }}
-                        whileHover={{
-                          scale:
-                            acceptingId ===
-                            item._id
-                              ? 1
-                              : 1.01,
-                        }}
-                        onClick={() =>
-                          handleAccept(
-                            item._id,
-                          )
-                        }
-                        disabled={
-                          acceptingId !==
-                          null
-                        }
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-green-600 px-5 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {acceptingId ===
-                        item._id ? (
-                          <>
-                            <Loader2
-                              size={18}
-                              className="animate-spin"
-                            />
+                      <div className="flex items-center gap-3 pt-2">
+                        <motion.button
+                          whileTap={{
+                            scale: 0.97,
+                          }}
+                          whileHover={{
+                            scale:
+                              acceptingId === item._id || rejectingId === item._id
+                                ? 1
+                                : 1.01,
+                          }}
+                          onClick={() =>
+                            handleAccept(
+                              item._id,
+                              item.assignment,
+                            )
+                          }
+                          disabled={
+                            acceptingId !== null || rejectingId !== null
+                          }
+                          className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-green-600 px-4 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {acceptingId === item._id ? (
+                            <>
+                              <Loader2
+                                size={18}
+                                className="animate-spin"
+                              />
 
-                            Accepting...
-                          </>
-                        ) : (
-                          <>
-                            <Navigation
-                              size={18}
-                            />
+                              Accepting...
+                            </>
+                          ) : (
+                            <>
+                              <Navigation
+                                size={18}
+                              />
 
-                            Accept Delivery
-                          </>
-                        )}
-                      </motion.button>
+                              Accept Delivery
+                            </>
+                          )}
+                        </motion.button>
+
+                        <motion.button
+                          whileTap={{
+                            scale: 0.97,
+                          }}
+                          whileHover={{
+                            scale:
+                              acceptingId === item._id || rejectingId === item._id
+                                ? 1
+                                : 1.01,
+                          }}
+                          onClick={() =>
+                            handleReject(
+                              item._id,
+                              item.assignment,
+                            )
+                          }
+                          disabled={
+                            acceptingId !== null || rejectingId !== null
+                          }
+                          className="flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-400 hover:dark:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {rejectingId === item._id ? (
+                            <>
+                              <Loader2
+                                size={18}
+                                className="animate-spin text-red-600"
+                              />
+
+                              Rejecting...
+                            </>
+                          ) : (
+                            <>
+                              <XCircle
+                                size={18}
+                              />
+
+                              Reject
+                            </>
+                          )}
+                        </motion.button>
+                      </div>
                     </div>
                   </motion.div>
                 ),

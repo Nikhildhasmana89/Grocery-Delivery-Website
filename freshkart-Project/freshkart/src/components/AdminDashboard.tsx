@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { UserInterface } from "./Nav";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp,
@@ -224,7 +225,7 @@ const getStockPercentage = (
    COMPONENT
 ========================================================= */
 
-export default function AdminDashboard({ user }: { user?: any }) {
+export default function AdminDashboard({ user }: { user?: UserInterface }) {
   const [filter, setFilter] =
     useState("Today");
 

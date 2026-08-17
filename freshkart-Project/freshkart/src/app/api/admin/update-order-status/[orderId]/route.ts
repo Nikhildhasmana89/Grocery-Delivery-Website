@@ -330,8 +330,18 @@ export async function POST(
       }
 
       // ==========================================
-      // FIND DELIVERY BOYS
+      // FIND DELIVERY BOYS (EXCLUDING REJECTED)
       // ==========================================
+
+      const pastAssignments = await DeliveryAssignment.find({ order: order._id });
+      const previouslyRejectedBoyIds: string[] = [];
+      pastAssignments.forEach((assign) => {
+        if (assign.rejectedBy && Array.isArray(assign.rejectedBy)) {
+          assign.rejectedBy.forEach((id: any) =>
+            previouslyRejectedBoyIds.push(String(id)),
+          );
+        }
+      });
 
       const deliveryBoys =
         await User.find({
@@ -342,6 +352,7 @@ export async function POST(
               "delivery_boy",
             ],
           },
+          _id: { $nin: previouslyRejectedBoyIds },
         }).select(
           "_id name email mobile socketId isOnline",
         );

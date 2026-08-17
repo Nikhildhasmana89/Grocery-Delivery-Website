@@ -5,17 +5,21 @@ export interface IDeliveryAssignment {
 
   broadcastedTo: mongoose.Types.ObjectId[];
 
+  rejectedBy?: mongoose.Types.ObjectId[];
+
   assignedTo: mongoose.Types.ObjectId | null;
 
   status:
     | "broadcasted"
     | "assigned"
     | "delivered"
-    | "cancelled";
+    | "cancelled"
+    | "rejected";
 
   acceptedAt: Date | null;
   deliveredAt: Date | null;
   cancelledAt: Date | null;
+  rejectedAt?: Date | null;
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -37,6 +41,13 @@ const deliveryAssignmentSchema =
         },
       ],
 
+      rejectedBy: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "User",
+        },
+      ],
+
       assignedTo: {
         type: Schema.Types.ObjectId,
         ref: "User",
@@ -50,6 +61,7 @@ const deliveryAssignmentSchema =
           "assigned",
           "delivered",
           "cancelled",
+          "rejected",
         ],
         default: "broadcasted",
       },
@@ -65,6 +77,11 @@ const deliveryAssignmentSchema =
       },
 
       cancelledAt: {
+        type: Date,
+        default: null,
+      },
+
+      rejectedAt: {
         type: Date,
         default: null,
       },

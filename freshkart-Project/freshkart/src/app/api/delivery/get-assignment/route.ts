@@ -60,6 +60,7 @@ export async function GET() {
               status: "broadcasted",
               broadcastedTo: deliveryBoyObjectId,
               assignedTo: null,
+              rejectedBy: { $ne: deliveryBoyObjectId },
             },
             {
               status: "assigned",

@@ -15,6 +15,7 @@ import {
   CreditCard,
   Ban,
 } from 'lucide-react'
+import { getSocket } from '@/lib/socket'
 
 // Container & item animation variants for staggered children
 const cardVariants = {
@@ -25,7 +26,7 @@ const cardVariants = {
     scale: 1,
     transition: {
       duration: 0.4,
-      ease: [0.25, 0.8, 0.25, 1],
+      ease: [0.25, 0.8, 0.25, 1] as const,
       staggerChildren: 0.1,
     },
   },
@@ -90,13 +91,13 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
 
   // Allow cancellation only if order is Processing or Out For Delivery
   const isCancellable =
-    order?.status === 'Processing' || order?.status === 'Out For Delivery'
+    (order?.status as string) === 'Processing' || (order?.status as string) === 'Out For Delivery' || order?.status === 'pending' || order?.status === 'out of delivery'
 
   const handleConfirmCancel = async () => {
     if (!onCancelOrder) return
     setIsCancelling(true)
     try {
-      const orderId = String(order._id || order.id)
+      const orderId = String(order._id || (order as any).id)
       await onCancelOrder(orderId)
       setShowCancelModal(false)
     } catch (error) {
@@ -108,12 +109,12 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
 
   useEffect(()=>{
     const socket = getSocket()
-    socket.on("order-status-update",(data) => {
-      if(data.orderId.tostring() == order._id){
+    socket.on("order-status-update",(data: any) => {
+      if(String(data?.orderId) == String(order._id)){
         setStatus(data.status)
       }
     })
-  },[])
+  },[order._id])
 
   return (
     <>
@@ -129,7 +130,7 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
           <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100 dark:border-slate-800 text-xs">
             <div className="flex items-center gap-2">
               <span className="font-bold text-slate-800 dark:text-slate-100">
-                Order ID: #{String(order?._id || order?.id || '').slice(-6).toUpperCase()}
+                Order ID: #{String(order?._id || (order as any)?.id || '').slice(-6).toUpperCase()}
               </span>
               <span className="text-slate-400">•</span>
               <span className="text-slate-500 dark:text-slate-400">
@@ -160,8 +161,8 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
             <div className="relative flex-shrink-0">
               <motion.img
                 whileHover={{ scale: 1.05 }}
-                src={firstItem?.image || firstItem?.product?.image || '/placeholder-grocery.png'}
-                alt={firstItem?.name || firstItem?.product?.name || 'Grocery Item'}
+                src={firstItem?.image || (firstItem as any)?.product?.image || '/placeholder-grocery.png'}
+                alt={firstItem?.name || (firstItem as any)?.product?.name || 'Grocery Item'}
                 className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm"
               />
               {totalItemsCount > 1 && (
@@ -174,7 +175,7 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
             {/* Item Details */}
             <div className="flex-1 space-y-1">
               <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base line-clamp-1">
-                {firstItem?.name || firstItem?.product?.name || 'Grocery Package'}
+                {firstItem?.name || (firstItem as any)?.product?.name || 'Grocery Package'}
                 {order?.items?.length > 1 && (
                   <span className="text-slate-400 font-normal text-xs ml-1.5">
                     +{order.items.length - 1} more items
@@ -182,11 +183,11 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
                 )}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {firstItem?.brand || 'FreshKart Direct'}
+                {(firstItem as any)?.brand || 'FreshKart Direct'}
               </p>
               <div className="flex items-center gap-3 pt-1">
                 <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">
-                  ₹{order?.totalAmount || order?.pricing?.total || 0}
+                  ₹{order?.totalAmount || (order as any)?.pricing?.total || 0}
                 </span>
                 <span className="text-xs text-slate-400">
                   • {order?.paymentMethod || 'Online Payment'}
@@ -274,7 +275,7 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
                     Method: {order?.paymentMethod || 'Online'}
                   </p>
                   <p className="text-slate-500 dark:text-slate-400">
-                    Status: {order?.paymentStatus || 'Paid'}
+                    Status: {(order as any)?.paymentStatus || 'Paid'}
                   </p>
                 </div>
               </div>
