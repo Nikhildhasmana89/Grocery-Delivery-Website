@@ -4,6 +4,8 @@ import User from "@/models/user.model";
 import DeliveryAssignment from "@/models/deliveryAssignment.model";
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     await connectDB();

@@ -4,13 +4,16 @@ import User from "@/models/user.model";
 import { redirect } from "next/navigation";
 import EditRoleMobile from "@/components/EditRoleMobile";
 
+export const dynamic = "force-dynamic";
+
 export default async function EditProfilePage() {
-  await connectDB();
   const session = await auth();
 
   if (!session?.user?.id) {
     redirect("/login");
   }
+
+  await connectDB();
 
   const user = await User.findById(session.user.id);
 
