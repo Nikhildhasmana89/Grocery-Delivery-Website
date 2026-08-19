@@ -6,6 +6,31 @@ import bcrypt from "bcryptjs";
 import connectDB from "@/lib/db";
 import User from "@/models/user.model";
 
+// ============================================
+// CANONICAL BASE URL RESOLUTION
+// Ensures redirect_uri matches production HTTPS URL on Vercel deployment
+// ============================================
+const getCanonicalBaseUrl = (): string => {
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.replace(/^https?:\/\//, "")}`;
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL.replace(/^https?:\/\//, "")}`;
+  }
+  const customUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL;
+  if (customUrl && !customUrl.includes("localhost")) {
+    const formatted = customUrl.replace(/\/$/, "");
+    return formatted.startsWith("http") ? formatted : `https://${formatted}`;
+  }
+  return "http://localhost:3000";
+};
+
+if (process.env.NODE_ENV === "production" || process.env.VERCEL_URL) {
+  const baseUrl = getCanonicalBaseUrl();
+  process.env.AUTH_URL = baseUrl;
+  process.env.NEXTAUTH_URL = baseUrl;
+}
+
 export const {
   handlers,
   signIn,
@@ -166,6 +191,8 @@ export const {
 
       clientSecret:
         process.env.GOOGLE_CLIENT_SECRET ?? "",
+
+      allowDangerousEmailAccountLinking: true,
 
       authorization: {
         params: {
