@@ -10,6 +10,7 @@ import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { getSocket } from "@/lib/socket";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { UserInterface } from "./Nav";
 
 import {
@@ -29,6 +30,7 @@ import {
   Wifi,
   WifiOff,
   XCircle,
+  ExternalLink,
 } from "lucide-react";
 
 /* =========================================================
@@ -124,6 +126,7 @@ interface DeliveryAssignment {
 ========================================================= */
 
 function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
+  const router = useRouter();
   const { data: session, status: sessionStatus } =
     useSession();
 
@@ -136,6 +139,12 @@ function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
 
   const [orders, setOrders] =
     useState<Order[]>([]);
+
+  const [activeAssignments, setActiveAssignments] =
+    useState<DeliveryAssignment[]>([]);
+
+  const [activeCount, setActiveCount] =
+    useState<number>(0);
 
   const [loading, setLoading] =
     useState(true);
@@ -172,31 +181,27 @@ function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
 
         setError("");
 
-        const response = await axios.get(
-          "/api/delivery/get-assignment",
-          {
-            timeout: 10000,
-          },
-        );
+        const [response, currentResponse] = await Promise.all([
+          axios.get("/api/delivery/get-assignment", { timeout: 10000 }),
+          axios.get("/api/delivery/current-order", { timeout: 10000 }).catch(() => null),
+        ]);
 
         console.log(
           "📦 Delivery API response:",
           response.data,
         );
 
-        /*
-         * Backend returns:
-         *
-         * {
-         *   assignment: [...]
-         * }
-         *
-         * NOT:
-         *
-         * {
-         *   orders: [...]
-         * }
-         */
+        if (currentResponse?.data?.success) {
+          const count = currentResponse.data.activeCount ?? (currentResponse.data.active ? 1 : 0);
+          setActiveCount(count);
+          setActiveAssignments(
+            Array.isArray(currentResponse.data.activeAssignments)
+              ? currentResponse.data.activeAssignments
+              : currentResponse.data.assignment
+              ? [currentResponse.data.assignment]
+              : []
+          );
+        }
 
         const assignments: DeliveryAssignment[] =
           Array.isArray(
@@ -204,13 +209,6 @@ function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
           )
             ? response.data.assignment
             : [];
-
-        /*
-         * Convert assignments → orders
-         *
-         * Only broadcasted assignments should
-         * appear in the available-orders list.
-         */
 
         const availableOrders: Order[] =
           assignments
@@ -226,19 +224,8 @@ function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
 
               return {
                 ...order,
-
-                /*
-                 * IMPORTANT:
-                 * Keep the assignment ID.
-                 */
-
                 assignment:
                   assignment._id,
-
-                /*
-                 * Nobody has accepted yet.
-                 */
-
                 assignedDeliveryBoy:
                   assignment.assignedTo ??
                   null,
@@ -565,6 +552,9 @@ function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
         response.data,
       );
 
+      const acceptedOrderId =
+        response.data?.order?.id || response.data?.order?._id || orderId;
+
       /*
        * Immediately remove it from UI.
        */
@@ -577,12 +567,8 @@ function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
           ),
       );
 
-      /*
-       * Then confirm the actual database
-       * state.
-       */
-
-      await fetchOrders();
+      // Redirect to dedicated delivery order page
+      router.push(`/delivery/order/${acceptedOrderId}`);
     } catch (error: unknown) {
       console.error(
         "❌ Accept order error:",
@@ -892,6 +878,52 @@ function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
           )}
         </AnimatePresence>
 
+        {/* ACTIVE DELIVERIES BANNER */}
+        {activeAssignments.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 rounded-3xl border border-emerald-200 bg-emerald-50/80 p-5 shadow-sm"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-emerald-800">
+                <Bike className="text-emerald-600" size={20} />
+                <h3 className="font-bold">
+                  Active Delivery ({activeAssignments.length} / 2)
+                </h3>
+              </div>
+              <span className="rounded-full bg-emerald-200/60 px-3 py-1 text-xs font-semibold text-emerald-800">
+                In Progress
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {activeAssignments.map((assign: any) => {
+                const orderId = assign.order?._id || assign.order;
+                const orderReqId = assign.order?.orderRequestId || String(orderId).slice(-6).toUpperCase();
+                const customerName = assign.order?.user?.name || assign.order?.address?.fullName || "Customer";
+                return (
+                  <div
+                    key={assign._id}
+                    className="flex items-center justify-between rounded-2xl bg-white p-3.5 shadow-sm"
+                  >
+                    <div>
+                      <p className="text-xs text-slate-400">Order #{orderReqId}</p>
+                      <p className="font-semibold text-slate-800">{customerName}</p>
+                    </div>
+                    <button
+                      onClick={() => router.push(`/delivery/order/${orderId}`)}
+                      className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700"
+                    >
+                      View Delivery
+                      <ExternalLink size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+
         {/* =================================================
             STATS
         ================================================= */}
@@ -928,7 +960,7 @@ function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
             </p>
           </motion.div>
 
-          {/* PENDING */}
+          {/* ACTIVE DELIVERIES */}
 
           <motion.div
             initial={{
@@ -942,20 +974,29 @@ function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
             transition={{
               delay: 0.2,
             }}
-            className="rounded-2xl border bg-white p-4 shadow-sm"
+            className={`rounded-2xl border p-4 shadow-sm ${
+              activeCount >= 2 ? "border-amber-200 bg-amber-50" : "bg-white"
+            }`}
           >
-            <Clock
-              className="mb-3 text-orange-500"
+            <Bike
+              className={`mb-3 ${activeCount >= 2 ? "text-amber-600" : "text-emerald-500"}`}
               size={24}
             />
 
             <p className="text-sm text-slate-500">
-              Pending
+              Active Deliveries
             </p>
 
-            <p className="mt-1 text-2xl font-bold text-slate-900">
-              {availableOrders.length}
-            </p>
+            <div className="mt-1 flex items-baseline gap-2">
+              <p className="text-2xl font-bold text-slate-900">
+                {activeCount} / 2
+              </p>
+              {activeCount >= 2 && (
+                <span className="text-xs font-semibold text-amber-600">
+                  Capacity Full
+                </span>
+              )}
+            </div>
           </motion.div>
 
           {/* COMPLETED */}
@@ -1356,8 +1397,9 @@ function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
                             )
                           }
                           disabled={
-                            acceptingId !== null || rejectingId !== null
+                            acceptingId !== null || rejectingId !== null || activeCount >= 2
                           }
+                          title={activeCount >= 2 ? "Maximum 2 active deliveries reached" : undefined}
                           className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-green-600 px-4 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {acceptingId === item._id ? (
@@ -1368,6 +1410,12 @@ function DeliveryBoyDashboard({ user }: { user?: UserInterface }) {
                               />
 
                               Accepting...
+                            </>
+                          ) : activeCount >= 2 ? (
+                            <>
+                              <Bike size={18} />
+
+                              Limit Reached (2/2)
                             </>
                           ) : (
                             <>

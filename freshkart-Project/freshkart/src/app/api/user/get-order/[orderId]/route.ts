@@ -44,10 +44,37 @@ export async function GET(
 
     console.log("✅ Order found:", order._id);
 
+    let deliveryBoy = null;
+    let deliveryBoyLocation = null;
+
+    if (order.assignedDeliveryBoy && typeof order.assignedDeliveryBoy === "object") {
+      const dbObj = order.assignedDeliveryBoy as any;
+      deliveryBoy = {
+        _id: String(dbObj._id),
+        name: dbObj.name,
+        email: dbObj.email,
+        mobile: dbObj.mobile,
+        image: dbObj.image,
+        isOnline: Boolean(dbObj.isOnline),
+      };
+
+      if (dbObj.location?.coordinates && Array.isArray(dbObj.location.coordinates)) {
+        const [lon, lat] = dbObj.location.coordinates;
+        if (typeof lat === "number" && typeof lon === "number" && (lat !== 0 || lon !== 0)) {
+          deliveryBoyLocation = {
+            latitude: lat,
+            longitude: lon,
+          };
+        }
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
         order,
+        deliveryBoy,
+        deliveryBoyLocation,
       },
       { status: 200 }
     );

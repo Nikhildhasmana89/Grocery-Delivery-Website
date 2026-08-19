@@ -44,6 +44,11 @@ export interface IOrder {
     | "out of delivery"
     | "delivered";
 
+  deliveryBoyCompleted?: boolean;
+  deliveryBoyCompletedAt?: Date | null;
+  customerConfirmed?: boolean;
+  customerConfirmedAt?: Date | null;
+
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -212,6 +217,30 @@ const OrderSchema = new mongoose.Schema<IOrder>(
       ref: "User",
       default: null,
       index: true,
+    },
+
+    // ==========================================
+    // DELIVERY COMPLETION & CONFIRMATION
+    // ==========================================
+
+    deliveryBoyCompleted: {
+      type: Boolean,
+      default: false,
+    },
+
+    deliveryBoyCompletedAt: {
+      type: Date,
+      default: null,
+    },
+
+    customerConfirmed: {
+      type: Boolean,
+      default: false,
+    },
+
+    customerConfirmedAt: {
+      type: Date,
+      default: null,
     },
   },
 

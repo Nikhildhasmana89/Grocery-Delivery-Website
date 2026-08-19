@@ -3,6 +3,8 @@
 import { IOrder } from '@/models/order.model'
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import axios from 'axios'
+import { useRouter } from 'next/navigation'
 import {
   PackageCheck,
   Truck,
@@ -14,6 +16,8 @@ import {
   MapPin,
   CreditCard,
   Ban,
+  CheckCircle2,
+  Loader2,
 } from 'lucide-react'
 import { getSocket } from '@/lib/socket'
 
@@ -41,13 +45,17 @@ interface UserOrderCardProps {
   order: IOrder
   onBuyAgain?: () => void
   onCancelOrder?: (orderId: string) => Promise<void> | void
+  onOrderUpdated?: () => void
 }
 
-function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps) {
+function UserOrderCard({ order, onBuyAgain, onCancelOrder, onOrderUpdated }: UserOrderCardProps) {
+  const router = useRouter()
   const [isExpanded, setIsExpanded] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [isConfirming, setIsConfirming] = useState(false)
   const [status, setStatus] = useState(order.status)
+  const [deliveryBoyCompleted, setDeliveryBoyCompleted] = useState((order as any).deliveryBoyCompleted)
 
   // Status configuration mapping
   const getStatusBadge = (status: string) => {
@@ -107,14 +115,46 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
     }
   }
 
-  useEffect(()=>{
-    const socket = getSocket()
-    socket.on("order-status-update",(data: any) => {
-      if(String(data?.orderId) == String(order._id)){
-        setStatus(data.status)
+  const handleGotOrder = async () => {
+    const orderId = String(order._id || (order as any).id);
+    if (!orderId || isConfirming) return;
+    try {
+      setIsConfirming(true);
+      const res = await axios.post(`/api/user/order/${encodeURIComponent(orderId)}/confirm-delivery`);
+      if (res.data?.success) {
+        setStatus("delivered");
+        if (onOrderUpdated) {
+          onOrderUpdated();
+        }
       }
-    })
-  },[order._id])
+    } catch (error) {
+      console.error("Got order confirmation error:", error);
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  useEffect(() => {
+    const socket = getSocket();
+    const handleStatus = (data: any) => {
+      if (String(data?.orderId) === String(order._id)) {
+        if (data.status) setStatus(data.status);
+        if (data.deliveryBoyCompleted) setDeliveryBoyCompleted(true);
+      }
+    };
+    const handleCompleted = (data: any) => {
+      if (String(data?.orderId) === String(order._id)) {
+        setDeliveryBoyCompleted(true);
+      }
+    };
+    socket.on("order-status-update", handleStatus);
+    socket.on("delivery-completed", handleCompleted);
+
+    return () => {
+      socket.off("order-status-update", handleStatus);
+      socket.off("delivery-completed", handleCompleted);
+    };
+  }, [order._id]);
 
   return (
     <>
@@ -197,8 +237,31 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
 
             {/* Action Buttons */}
             <div className="flex flex-wrap md:flex-col gap-2 w-full md:w-auto justify-end">
+              {/* Got Order Confirmation Button */}
+              {deliveryBoyCompleted && status !== 'delivered' && (
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleGotOrder}
+                  disabled={isConfirming}
+                  className="flex-1 md:flex-none px-4 py-2 rounded-xl text-xs font-extrabold bg-emerald-600 text-white shadow-md hover:bg-emerald-700 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
+                >
+                  {isConfirming ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Confirming...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Got Order
+                    </>
+                  )}
+                </motion.button>
+              )}
+
               {/* Cancel Button */}
-              {isCancellable && (
+              {isCancellable && !deliveryBoyCompleted && (
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.95 }}
@@ -213,6 +276,7 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder }: UserOrderCardProps)
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.95 }}
+                onClick={() => router.push(`/user/track-order/${order._id || (order as any).id}`)}
                 className="flex-1 md:flex-none px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/50 dark:border-emerald-800/50 transition-colors flex items-center justify-center gap-1.5"
               >
                 <ExternalLink className="w-3.5 h-3.5" />

@@ -56,50 +56,43 @@ export async function GET() {
     void Order;
 
     // ============================================
-    // FIND ACCEPTED ACTIVE ASSIGNMENT
+    // FIND ACCEPTED ACTIVE ASSIGNMENTS (UP TO 2)
     // ============================================
 
-    const activeAssignment =
-      await DeliveryAssignment.findOne({
-        assignedTo: deliveryBoyId,
-
-        status: "assigned",
+    const activeAssignments = await DeliveryAssignment.find({
+      assignedTo: deliveryBoyId,
+      status: "assigned",
+    })
+      .populate({
+        path: "order",
+        populate: {
+          path: "user",
+          select: "name email mobile image",
+        },
       })
-        .populate({
-          path: "order",
+      .populate({
+        path: "assignedTo",
+        select: "name email mobile image",
+      })
+      .sort({ createdAt: -1 })
+      .lean();
 
-          populate: {
-            path: "user",
-
-            select:
-              "name email mobile image",
-          },
-        })
-        .populate({
-          path: "assignedTo",
-
-          select:
-            "name email mobile image",
-        })
-        .lean();
+    const activeCount = activeAssignments.length;
 
     // ============================================
-    // NO CURRENT ORDER
+    // NO CURRENT ORDERS
     // ============================================
 
-    if (!activeAssignment) {
-      console.log(
-        "ℹ️ No active delivery order",
-      );
+    if (activeCount === 0) {
+      console.log("ℹ️ No active delivery orders");
 
       return NextResponse.json(
         {
           success: true,
-
           active: false,
-
+          activeCount: 0,
+          activeAssignments: [],
           assignment: null,
-
           order: null,
         },
         {
@@ -109,36 +102,16 @@ export async function GET() {
     }
 
     // ============================================
-    // CURRENT ORDER FOUND
+    // CURRENT ORDERS FOUND
     // ============================================
 
+    console.log("========================================");
+    console.log(`✅ ${activeCount} ACTIVE ORDER(S) FOUND`);
     console.log(
-      "========================================",
+      "Assignment IDs:",
+      activeAssignments.map((a: any) => String(a._id)),
     );
-
-    console.log(
-      "✅ CURRENT ORDER FOUND",
-    );
-
-    console.log(
-      "Assignment ID:",
-      String(
-        activeAssignment._id,
-      ),
-    );
-
-    console.log(
-      "Order ID:",
-      activeAssignment.order
-        ? String(
-            activeAssignment.order._id,
-          )
-        : null,
-    );
-
-    console.log(
-      "========================================",
-    );
+    console.log("========================================");
 
     // ============================================
     // RESPONSE
@@ -147,14 +120,11 @@ export async function GET() {
     return NextResponse.json(
       {
         success: true,
-
         active: true,
-
-        assignment:
-          activeAssignment,
-
-        order:
-          activeAssignment.order,
+        activeCount,
+        activeAssignments,
+        assignment: activeAssignments[0],
+        order: activeAssignments[0]?.order,
       },
       {
         status: 200,

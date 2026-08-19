@@ -128,19 +128,20 @@ export async function POST(
     }
 
     // ============================================
-    // CHECK IF DELIVERY BOY ALREADY HAS A DELIVERY
+    // CHECK IF DELIVERY BOY ALREADY HAS 2 ACTIVE DELIVERIES
     // ============================================
 
-    const alreadyAssigned = await DeliveryAssignment.findOne({
+    const activeAssignmentsCount = await DeliveryAssignment.countDocuments({
       assignedTo: deliveryBoyObjectId,
       status: "assigned",
     });
 
-    if (alreadyAssigned) {
+    if (activeAssignmentsCount >= 2) {
       return NextResponse.json(
         {
           success: false,
-          message: "You already have an active delivery assignment",
+          message:
+            "You already have 2 active deliveries. Complete one delivery before accepting another.",
         },
         { status: 409 },
       );
@@ -237,22 +238,29 @@ export async function POST(
     );
 
     // ============================================
-    // REMOVE DELIVERY BOY FROM OTHER BROADCASTED ASSIGNMENTS
+    // REMOVE DELIVERY BOY FROM OTHER BROADCASTED ASSIGNMENTS IF AT CAP (2)
     // ============================================
 
-    await DeliveryAssignment.updateMany(
-      {
-        _id: { $ne: acceptedAssignment._id },
-        broadcastedTo: deliveryBoyObjectId,
-        status: "broadcasted",
-        assignedTo: null,
-      },
-      {
-        $pull: {
+    const currentActiveCount = await DeliveryAssignment.countDocuments({
+      assignedTo: deliveryBoyObjectId,
+      status: "assigned",
+    });
+
+    if (currentActiveCount >= 2) {
+      await DeliveryAssignment.updateMany(
+        {
+          _id: { $ne: acceptedAssignment._id },
           broadcastedTo: deliveryBoyObjectId,
+          status: "broadcasted",
+          assignedTo: null,
         },
-      },
-    );
+        {
+          $pull: {
+            broadcastedTo: deliveryBoyObjectId,
+          },
+        },
+      );
+    }
 
     // Broadcast order-accepted event to all delivery boys room so their dashboards clear this item
     emitEventHandler(

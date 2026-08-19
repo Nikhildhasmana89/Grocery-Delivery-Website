@@ -17,21 +17,21 @@ function MyOrder() {
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [activeFilter, setActiveFilter] = useState<string>('All Orders')
 
-  useEffect(() => {
-    const getMyOrders = async () => {
-      try {
-        setLoading(true)
-        const result = await axios.get('/api/user/my-orders')
-        setOrders(result.data.orders || [])
-      } catch (error) {
-        console.error('Error fetching my orders:', error)
-      } finally {
-        setLoading(false)
-      }
+  const getMyOrders = React.useCallback(async () => {
+    try {
+      setLoading(true)
+      const result = await axios.get('/api/user/my-orders')
+      setOrders(result.data.orders || [])
+    } catch (error) {
+      console.error('Error fetching my orders:', error)
+    } finally {
+      setLoading(false)
     }
-
-    getMyOrders()
   }, [])
+
+  useEffect(() => {
+    getMyOrders()
+  }, [getMyOrders])
 
   // Handler for Buy Again button -> redirects to Home Page
   const handleBuyAgain = (order: IOrder) => {
@@ -171,6 +171,7 @@ function MyOrder() {
                 key={order._id || (order as any).id}
                 order={order}
                 onBuyAgain={() => handleBuyAgain(order)}
+                onOrderUpdated={getMyOrders}
               />
             ))}
           </motion.div>

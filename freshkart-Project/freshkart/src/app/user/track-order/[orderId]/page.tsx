@@ -22,6 +22,7 @@ import {
   RefreshCw,
   CreditCard,
   ArrowLeft,
+  Loader2,
 } from "lucide-react";
 import { getSocket } from "@/lib/socket";
 import dynamic from "next/dynamic";
@@ -82,6 +83,8 @@ interface Order {
     | "out of delivery"
     | "delivered"
     | "cancelled";
+  deliveryBoyCompleted?: boolean;
+  customerConfirmed?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -197,8 +200,47 @@ export default function TrackOrder({ params }: TrackOrderProps) {
   >(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [confirmingDelivery, setConfirmingDelivery] = useState(false);
   const [error, setError] = useState("");
   const [socketConnected, setSocketConnected] = useState(false);
+
+  /* =======================================================
+     CUSTOMER CONFIRM DELIVERY ("GOT ORDER")
+  ======================================================= */
+  const handleConfirmDelivery = async () => {
+    if (!orderId || confirmingDelivery) return;
+
+    try {
+      setConfirmingDelivery(true);
+      setError("");
+
+      const res = await axios.post(
+        `/api/user/order/${encodeURIComponent(orderId)}/confirm-delivery`
+      );
+
+      if (res.data?.success) {
+        setOrder((previous) =>
+          previous
+            ? {
+                ...previous,
+                status: "delivered",
+                customerConfirmed: true,
+              }
+            : previous
+        );
+        fetchOrder(true);
+      } else {
+        setError(res.data?.message || "Failed to confirm delivery");
+      }
+    } catch (err: any) {
+      console.error("❌ Confirm delivery error:", err);
+      setError(err.response?.data?.message || "Failed to confirm delivery");
+    } finally {
+      setConfirmingDelivery(false);
+    }
+  };
+
+  const [lastLocationUpdate, setLastLocationUpdate] = useState<Date | null>(null);
 
   /* =======================================================
      GET ORDER ID
@@ -256,7 +298,10 @@ export default function TrackOrder({ params }: TrackOrderProps) {
 
         setOrder(normalizedOrder);
         setDeliveryBoy(data.deliveryBoy ?? null);
-        setDeliveryBoyLocation(data.deliveryBoyLocation ?? null);
+        if (data.deliveryBoyLocation) {
+          setDeliveryBoyLocation(data.deliveryBoyLocation);
+          setLastLocationUpdate(new Date());
+        }
       } catch (err: unknown) {
         console.error("❌ Track order error:", err);
         if (axios.isAxiosError(err)) {
@@ -309,30 +354,59 @@ export default function TrackOrder({ params }: TrackOrderProps) {
     };
 
     const handleDeliveryLocation = (data: unknown) => {
-      const location = data as {
+      const payload = data as {
+        userId?: string;
         orderId?: string;
         latitude?: number;
         longitude?: number;
+        location?: {
+          type?: string;
+          coordinates?: [number, number];
+        };
       };
 
-      if (
-        location.orderId &&
-        String(location.orderId) !== String(orderId)
-      ) {
+      // Security check: Only update if event belongs to assigned delivery boy
+      const assignedBoyId =
+        deliveryBoy?._id ||
+        (order?.assignedDeliveryBoy && typeof order.assignedDeliveryBoy === "object"
+          ? String((order.assignedDeliveryBoy as any)._id)
+          : order?.assignedDeliveryBoy ? String(order.assignedDeliveryBoy) : null);
+
+      if (payload.userId && assignedBoyId && String(payload.userId) !== String(assignedBoyId)) {
         return;
       }
 
-      if (
-        typeof location.latitude !== "number" ||
-        typeof location.longitude !== "number"
-      ) {
+      if (payload.orderId && String(payload.orderId) !== String(orderId)) {
         return;
       }
 
-      setDeliveryBoyLocation({
-        latitude: location.latitude,
-        longitude: location.longitude,
-      });
+      // Stop tracking if order is delivered or cancelled
+      if (order?.status === "delivered" || order?.status === "cancelled") {
+        return;
+      }
+
+      let lat: number | undefined;
+      let lon: number | undefined;
+
+      if (typeof payload.latitude === "number" && typeof payload.longitude === "number") {
+        lat = payload.latitude;
+        lon = payload.longitude;
+      } else if (
+        payload.location?.coordinates &&
+        Array.isArray(payload.location.coordinates) &&
+        payload.location.coordinates.length === 2
+      ) {
+        lon = payload.location.coordinates[0];
+        lat = payload.location.coordinates[1];
+      }
+
+      if (typeof lat === "number" && typeof lon === "number" && (lat !== 0 || lon !== 0)) {
+        setDeliveryBoyLocation({
+          latitude: lat,
+          longitude: lon,
+        });
+        setLastLocationUpdate(new Date());
+      }
     };
 
     const handleOrderStatus = (data: unknown) => {
@@ -374,13 +448,19 @@ export default function TrackOrder({ params }: TrackOrderProps) {
       fetchOrder();
     };
 
+    const handleDeliveryCompleted = () => {
+      fetchOrder();
+    };
+
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
     socket.on("connect_error", handleConnectError);
     socket.on("delivery-location", handleDeliveryLocation);
     socket.on("delivery-location-update", handleDeliveryLocation);
+    socket.on("update-deliveryBoy-location", handleDeliveryLocation);
     socket.on("order-status-update", handleOrderStatus);
     socket.on("order-assigned", handleOrderAssigned);
+    socket.on("delivery-completed", handleDeliveryCompleted);
 
     if (socket.connected) {
       handleConnect();
@@ -394,10 +474,12 @@ export default function TrackOrder({ params }: TrackOrderProps) {
       socket.off("connect_error", handleConnectError);
       socket.off("delivery-location", handleDeliveryLocation);
       socket.off("delivery-location-update", handleDeliveryLocation);
+      socket.off("update-deliveryBoy-location", handleDeliveryLocation);
       socket.off("order-status-update", handleOrderStatus);
       socket.off("order-assigned", handleOrderAssigned);
+      socket.off("delivery-completed", handleDeliveryCompleted);
     };
-  }, [orderId, session?.user?.id, fetchOrder]);
+  }, [orderId, session?.user?.id, fetchOrder, deliveryBoy?._id, order?.assignedDeliveryBoy, order?.status]);
 
   /* =======================================================
      LOADING SKELETON
@@ -520,7 +602,11 @@ export default function TrackOrder({ params }: TrackOrderProps) {
                     : "bg-slate-400"
                 }`}
               />
-              {socketConnected ? "Live Tracking" : "Connecting"}
+              {socketConnected
+                ? lastLocationUpdate
+                  ? `Partner Live (Updated ${lastLocationUpdate.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })})`
+                  : "Live Tracking"
+                : "Connecting"}
             </div>
 
             <button
@@ -536,6 +622,56 @@ export default function TrackOrder({ params }: TrackOrderProps) {
             </button>
           </div>
         </motion.div>
+
+        {/* =================================================
+            CUSTOMER GOT ORDER CONFIRMATION BANNER
+        ================================================= */}
+        {order.deliveryBoyCompleted && order.status !== "delivered" && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 rounded-3xl border border-emerald-300 bg-gradient-to-r from-emerald-50 to-teal-50 p-6 shadow-md"
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-md">
+                  <CheckCircle2 size={26} />
+                </div>
+                <div>
+                  <span className="inline-block rounded-full bg-emerald-200/80 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
+                    Handed Over
+                  </span>
+                  <h2 className="mt-0.5 text-lg font-extrabold text-slate-900">
+                    Delivery partner completed your order!
+                  </h2>
+                  <p className="text-xs text-slate-600">
+                    Please confirm that you have received your grocery items.
+                  </p>
+                </div>
+              </div>
+
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleConfirmDelivery}
+                disabled={confirmingDelivery}
+                className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-3.5 font-extrabold text-white shadow-lg transition hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 shrink-0"
+              >
+                {confirmingDelivery ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Confirming...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} />
+                    Got Order
+                  </>
+                )}
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
 
         {/* =================================================
             STATUS BADGE
