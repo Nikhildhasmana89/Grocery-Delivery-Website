@@ -1,28 +1,32 @@
 'use client'
 
-import { AppDispatch } from '@/redux/store'
+import { AppDispatch, RootState } from '@/redux/store'
 import { setUserData } from '@/redux/userSlice'
 import axios from 'axios'
-import React, { useEffect } from 'react'
-import { useDispatch } from 'react-redux'
+import { useEffect, useRef } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 
 function usegetMe() {
     const dispatch = useDispatch<AppDispatch>()
+    const userData = useSelector((state: RootState) => state.user.userData)
+    const fetchedRef = useRef(false)
+
     useEffect(() => {
+        if (userData || fetchedRef.current) return;
+        fetchedRef.current = true;
+
         const getMe = async () => {
             try {
                 const result = await axios.get("/api/me")
-                dispatch(setUserData(result.data))
-                console.log(result.data);
-                
+                if (result.data?.user) {
+                    dispatch(setUserData(result.data.user))
+                }
             } catch (error) {
-                console.log(error);
-                
+                // Guest user / unauthorized
             }
         }
         getMe()
-    },[])
-  
+    }, [userData, dispatch])
 }
 
 export default usegetMe

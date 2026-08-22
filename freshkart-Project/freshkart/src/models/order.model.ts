@@ -249,6 +249,10 @@ const OrderSchema = new mongoose.Schema<IOrder>(
   }
 );
 
+OrderSchema.index({ user: 1, createdAt: -1 });
+OrderSchema.index({ status: 1, createdAt: -1 });
+OrderSchema.index({ assignedDeliveryBoy: 1, status: 1 });
+
 // ==========================================
 // PREVENT MODEL OVERWRITE
 // ==========================================

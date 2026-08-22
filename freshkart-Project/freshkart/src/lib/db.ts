@@ -10,12 +10,6 @@ declare global {
   var mongooseCache: MongooseCache | undefined;
 }
 
-const MONGODB_URL = process.env.MONGODB_URL;
-
-if (!MONGODB_URL) {
-  throw new Error("MONGODB_URL is not defined in environment variables");
-}
-
 const cached: MongooseCache = global.mongooseCache ?? {
   conn: null,
   promise: null,
@@ -24,6 +18,11 @@ const cached: MongooseCache = global.mongooseCache ?? {
 global.mongooseCache = cached;
 
 const connectDB = async (): Promise<typeof mongoose> => {
+  const MONGODB_URL = process.env.MONGODB_URL;
+
+  if (!MONGODB_URL) {
+    throw new Error("MONGODB_URL is not defined in environment variables");
+  }
   // Already connected
   if (cached.conn) {
     return cached.conn;

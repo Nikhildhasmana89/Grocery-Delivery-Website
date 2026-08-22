@@ -51,6 +51,10 @@ const grocerySchema = new Schema<IGrocery>(
   },
 );
 
+grocerySchema.index({ category: 1 });
+grocerySchema.index({ name: 1 });
+grocerySchema.index({ createdAt: -1 });
+
 // Prevent overwrite model error in Next.js hot-reloading
 const Grocery =
   mongoose.models.Grocery || mongoose.model("Grocery", grocerySchema);

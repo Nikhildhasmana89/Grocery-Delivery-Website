@@ -21,15 +21,15 @@ export interface IGrocery {
 export default function GroceryItemCard({ item }: { item: IGrocery }) {
   const dispatch = useDispatch<AppDispatch>();
 
-  // 1. Safe state selector with fallback for both 'cart' and 'card' keys
-  const cartData = useSelector(
-    (state: RootState) => state.cart?.cartData || (state as any).card?.cardData
-  ) || [];
-
-  // 2. Count total occurrences of this item in the cart array
-  const quantity = item._id 
-    ? cartData.filter((i) => i._id === item._id).length 
-    : 0;
+  const quantity = useSelector((state: RootState) => {
+    if (!item._id) return 0;
+    const cartList = state.cart?.cartData || (state as any).card?.cardData || [];
+    let count = 0;
+    for (let i = 0; i < cartList.length; i++) {
+      if (cartList[i]._id === item._id) count++;
+    }
+    return count;
+  });
 
   return (
     <motion.div

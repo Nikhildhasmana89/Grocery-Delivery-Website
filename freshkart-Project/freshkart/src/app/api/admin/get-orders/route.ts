@@ -4,10 +4,20 @@ import User from "@/models/user.model";
 import DeliveryAssignment from "@/models/deliveryAssignment.model";
 import { NextResponse } from "next/server";
 
+import { auth } from "@/auth";
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    const session = await auth();
+    if (!session?.user?.id || (session.user as any).role !== "admin") {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     await connectDB();
 
     // Make sure Mongoose has registered all referenced models

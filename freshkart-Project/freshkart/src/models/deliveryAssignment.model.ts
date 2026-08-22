@@ -91,6 +91,10 @@ const deliveryAssignmentSchema =
     },
   );
 
+deliveryAssignmentSchema.index({ assignedTo: 1, status: 1 });
+deliveryAssignmentSchema.index({ status: 1, broadcastedTo: 1 });
+deliveryAssignmentSchema.index({ order: 1 });
+
 const DeliveryAssignment =
   mongoose.models.DeliveryAssignment ??
   mongoose.model<IDeliveryAssignment>(

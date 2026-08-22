@@ -12,8 +12,19 @@ interface UserDashboardProps {
 async function UserDashboard({ user }: UserDashboardProps = {}) {
   await connectDB();
 
-  const groceries = await Grocery.find().lean();
-  const plainGroceries = JSON.parse(JSON.stringify(groceries));
+  const groceries = await Grocery.find()
+    .select("_id name category price unit image")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const plainGroceries = groceries.map((g: any) => ({
+    _id: g._id ? g._id.toString() : "",
+    name: g.name,
+    category: g.category || "",
+    price: g.price,
+    unit: g.unit || "",
+    image: g.image || "",
+  }));
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500 selection:text-slate-950">
