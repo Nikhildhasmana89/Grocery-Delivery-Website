@@ -7,6 +7,8 @@ interface IGrocery {
   price: string;
   unit: string;
   image: string;
+  stock?: number;
+  minStock?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -45,6 +47,14 @@ const grocerySchema = new Schema<IGrocery>(
       type: String,
       required: true,
     },
+    stock: {
+      type: Number,
+      default: 20,
+    },
+    minStock: {
+      type: Number,
+      default: 10,
+    },
   },
   {
     timestamps: true,
@@ -54,6 +64,7 @@ const grocerySchema = new Schema<IGrocery>(
 grocerySchema.index({ category: 1 });
 grocerySchema.index({ name: 1 });
 grocerySchema.index({ createdAt: -1 });
+grocerySchema.index({ stock: 1 });
 
 // Prevent overwrite model error in Next.js hot-reloading
 const Grocery =

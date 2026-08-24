@@ -16,13 +16,30 @@ const PORT = process.env.PORT || 4000;
 const NEXT_BASE_URL =
   process.env.NEXT_BASE_URL || "http://127.0.0.1:3000";
 
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  process.env.NEXT_BASE_URL,
+].filter(Boolean);
+
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        origin.startsWith("http://localhost:") ||
+        origin.startsWith("http://127.0.0.1:")
+      ) {
+        callback(null, true);
+      } else {
+        callback(null, true);
+      }
+    },
     methods: ["GET", "POST"],
     credentials: true,
   },
-  transports: ["polling", "websocket"],
+  transports: ["websocket", "polling"],
 });
 
 io.on("connection", (socket) => {
@@ -159,6 +176,32 @@ io.on("connection", (socket) => {
       }
     }
   );
+
+  // =========================
+  // CHAT ROOM EVENTS
+  // =========================
+
+  socket.on("join-room", (room) => {
+    if (room) {
+      socket.join(String(room));
+      console.log(`💬 Socket ${socket.id} joined room "${room}"`);
+    }
+  });
+
+  socket.on("leave-room", (room) => {
+    if (room) {
+      socket.leave(String(room));
+      console.log(`💬 Socket ${socket.id} left room "${room}"`);
+    }
+  });
+
+  socket.on("send-message", (data) => {
+    if (data?.chatRoomId || data?.room) {
+      const targetRoom = String(data.chatRoomId || data.room);
+      io.to(targetRoom).emit("new-message", data.message || data);
+      console.log(`💬 Socket message broadcasted to room "${targetRoom}"`);
+    }
+  });
 
   // =========================
   // DISCONNECT
@@ -317,11 +360,10 @@ app.get("/", (_req, res) => {
 // START SERVER
 // =========================
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `🚀 Socket Server Running on http://localhost:${PORT}`
+    `🚀 Socket Server Running on http://0.0.0.0:${PORT}`
   );
-
   console.log(
     `🔗 Next.js Server: ${NEXT_BASE_URL}`
   );

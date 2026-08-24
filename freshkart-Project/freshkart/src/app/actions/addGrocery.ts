@@ -25,6 +25,11 @@ export async function addGroceryAction(formData: FormData) {
       return { success: false, error: "Failed to upload image to Cloudinary." };
     }
 
+    const stockRaw = formData.get("stock");
+    const minStockRaw = formData.get("minStock");
+    const stock = stockRaw ? Number(stockRaw) : 20;
+    const minStock = minStockRaw ? Number(minStockRaw) : 10;
+
     // Save to Mongoose database
     const newGrocery = await Grocery.create({
       name,
@@ -32,6 +37,8 @@ export async function addGroceryAction(formData: FormData) {
       price,
       unit,
       image: imageUrl,
+      stock,
+      minStock,
     });
 
     return {

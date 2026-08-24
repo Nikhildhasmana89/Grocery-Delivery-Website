@@ -1,0 +1,10 @@
+{
+  "name": "freshkart-project",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:app": "npm run dev --prefix freshkart",
+    "dev:socket": "npm run dev --prefix socketServer",
+    "build": "npm run build --prefix freshkart"
+  }
+}

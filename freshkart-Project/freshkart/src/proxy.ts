@@ -1,13 +1,10 @@
-import { getToken } from "next-auth/jwt";
-import { NextRequest, NextResponse } from "next/server";
-
-const AUTH_SECRET =
-  process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+import { auth } from "@/auth";
+import { NextResponse } from "next/server";
 
 const LOGIN_PATH = "/login";
 const UNAUTHORIZED_PATH = "/unauthorized";
 
-export async function proxy(req: NextRequest) {
+export default auth((req) => {
   const { pathname } = req.nextUrl;
 
   // --------------------------------------------
@@ -24,75 +21,58 @@ export async function proxy(req: NextRequest) {
     requiredRole = "admin";
   }
 
-  // Should normally never happen because of matcher,
-  // but avoids unnecessary work.
   if (!requiredRole) {
     return NextResponse.next();
   }
 
   // --------------------------------------------
-  // 2. Check auth secret
+  // 2. Read NextAuth v5 Session
   // --------------------------------------------
 
-  if (!AUTH_SECRET) {
-    console.error("AUTH_SECRET is missing");
-
-    return NextResponse.redirect(
-      new URL(LOGIN_PATH, req.url)
-    );
-  }
+  const session = req.auth;
 
   // --------------------------------------------
-  // 3. Read JWT token
+  // 3. Not authenticated
   // --------------------------------------------
 
-  const token = await getToken({
-    req,
-    secret: AUTH_SECRET,
-  });
-
-  // --------------------------------------------
-  // 4. Not authenticated
-  // --------------------------------------------
-
-  if (!token) {
+  if (!session?.user) {
     const loginUrl = new URL(LOGIN_PATH, req.url);
 
-    loginUrl.searchParams.set(
-      "callbackUrl",
-      pathname
-    );
+    loginUrl.searchParams.set("callbackUrl", pathname);
 
     return NextResponse.redirect(loginUrl);
   }
 
   // --------------------------------------------
-  // 5. Get role
+  // 4. Get normalized role
   // --------------------------------------------
 
-  const role =
-    typeof token.role === "string"
-      ? token.role.trim().toLowerCase()
-      : "";
+  const role = (session.user as any).role
+    ? String((session.user as any).role).trim().toLowerCase()
+    : "user";
 
   // --------------------------------------------
-  // 6. Check role
+  // 5. Check role authorization
   // --------------------------------------------
 
-  if (role !== requiredRole) {
-    return NextResponse.redirect(
-      new URL(UNAUTHORIZED_PATH, req.url)
-    );
+  // Admin routes: strictly requires admin
+  if (requiredRole === "admin" && role !== "admin") {
+    return NextResponse.redirect(new URL(UNAUTHORIZED_PATH, req.url));
   }
 
-  // --------------------------------------------
-  // 7. Authorized
-  // --------------------------------------------
+  // Delivery routes: requires deliveryboy or admin
+  if (
+    requiredRole === "deliveryboy" &&
+    role !== "deliveryboy" &&
+    role !== "delivery_boy" &&
+    role !== "admin"
+  ) {
+    return NextResponse.redirect(new URL(UNAUTHORIZED_PATH, req.url));
+  }
 
+  // User routes (/user/*): accessible to all authenticated users
   return NextResponse.next();
-}
-
-export default proxy;
+});
 
 export const config = {
   matcher: [

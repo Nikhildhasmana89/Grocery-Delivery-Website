@@ -1,0 +1,53 @@
+services:
+  freshkart:
+    build:
+      context: ./freshkart
+      dockerfile: Dockerfile
+    container_name: freshkart-app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URL=mongodb://mongodb:27017/FRESHKART
+      - MONGODB_URI=mongodb://mongodb:27017/FRESHKART
+      - AUTH_SECRET=${AUTH_SECRET:-freshkart_secret_key_change_in_prod_123}
+      - AUTH_URL=${AUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXT_PUBLIC_SOCKET_SERVER_URL=${NEXT_PUBLIC_SOCKET_SERVER_URL:-http://localhost:4000}
+      - NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL:-http://localhost:4000}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME:-}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY:-}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET:-}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+    depends_on:
+      - mongodb
+
+  socketserver:
+    build:
+      context: ./socketServer
+      dockerfile: Dockerfile
+    container_name: freshkart-socket
+    restart: always
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - NEXT_BASE_URL=http://freshkart:3000
+    depends_on:
+      - freshkart
+
+  mongodb:
+    image: mongo:8
+    container_name: freshkart-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+volumes:
+  mongodb_data:

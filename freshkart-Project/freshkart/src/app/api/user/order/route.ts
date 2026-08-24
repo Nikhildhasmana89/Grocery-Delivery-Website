@@ -190,6 +190,16 @@ export async function POST(req: NextRequest) {
       assignedDeliveryBoy: null,
     });
 
+    // Import Grocery model lazily or at top level
+    const Grocery = (await import("@/models/grocery.model")).default;
+    for (const item of items) {
+      if (item.grocery) {
+        await Grocery.findByIdAndUpdate(item.grocery, {
+          $inc: { stock: -Math.max(1, item.quantity || 1) },
+        });
+      }
+    }
+
     console.log(
       "✅ Order created:",
       newOrder._id.toString()

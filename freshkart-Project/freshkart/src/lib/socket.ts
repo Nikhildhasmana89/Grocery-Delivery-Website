@@ -49,8 +49,8 @@ export const getSocket = (
 
   socket = io(socketUrl, {
     transports: [
-      "polling",
       "websocket",
+      "polling",
     ],
 
     autoConnect: false,
@@ -147,26 +147,9 @@ export const getSocket = (
   socket.on(
     "connect_error",
     (error) => {
-      console.error(
-        "========================================",
-      );
-
-      console.error(
-        "❌ SOCKET CONNECTION ERROR",
-      );
-
-      console.error(
-        "Message:",
-        error.message,
-      );
-
-      console.error(
-        "URL:",
-        socketUrl,
-      );
-
-      console.error(
-        "========================================",
+      console.warn(
+        "⚠️ Socket connection attempt:",
+        error.message || "Failed to reach Socket server at " + socketUrl,
       );
     },
   );

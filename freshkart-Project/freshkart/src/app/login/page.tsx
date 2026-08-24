@@ -110,7 +110,11 @@ export default function Login({ nextStep, previousStep }: PropType) {
           })
         );
 
-        const targetPath = getRedirectPath(user?.roleSelected, user?.role);
+        const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+        const callbackUrl = searchParams?.get("callbackUrl");
+
+        const defaultPath = getRedirectPath(user?.roleSelected, user?.role);
+        const targetPath = callbackUrl && callbackUrl.startsWith("/") ? callbackUrl : defaultPath;
 
         setTimeout(() => {
           router.replace(targetPath);

@@ -27,6 +27,7 @@ import {
 import { getSocket } from "@/lib/socket";
 import dynamic from "next/dynamic";
 import type { ILocation } from "@/components/LiveMap";
+import CustomerChat from "@/components/CustomerChat";
 
 const LiveMap = dynamic(
   () => import("@/components/LiveMap"),
@@ -808,6 +809,16 @@ export default function TrackOrder({ params }: TrackOrderProps) {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* REAL-TIME CUSTOMER ↔ DELIVERY PARTNER CHAT */}
+            {session?.user?.id && (
+              <CustomerChat
+                orderId={order._id}
+                currentUserId={session.user.id}
+                deliveryBoyName={deliveryBoy?.name || "Delivery Partner"}
+                deliveryBoyPhone={deliveryBoy?.mobile}
+              />
+            )}
 
             {/* DELIVERY ADDRESS */}
             <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5 shadow-sm">

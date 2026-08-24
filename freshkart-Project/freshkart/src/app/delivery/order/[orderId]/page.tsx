@@ -26,6 +26,7 @@ import dynamic from "next/dynamic";
 import { getSocket } from "@/lib/socket";
 import GeoUpdater from "@/components/GeoUpdater";
 import type { ILocation } from "@/components/LiveMap";
+import DeliveryChat from "@/components/DeliveryChat";
 
 const LiveMap = dynamic(() => import("@/components/LiveMap"), {
   ssr: false,
@@ -463,6 +464,16 @@ export default function DeliveryOrderPage({ params }: PageProps) {
 
           {/* SIDEBAR DETAILS */}
           <div className="space-y-5">
+            {/* REAL-TIME CUSTOMER CHAT */}
+            {deliveryBoyId && (
+              <DeliveryChat
+                orderId={order._id}
+                deliveryBoyId={deliveryBoyId}
+                customerName={order.address?.fullName || order.user?.name || "Customer"}
+                customerPhone={order.address?.mobile}
+              />
+            )}
+
             {/* CUSTOMER DETAILS */}
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center justify-between border-b pb-4">

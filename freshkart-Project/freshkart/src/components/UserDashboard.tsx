@@ -5,6 +5,8 @@ import CategorySlide from "./CategorySlider";
 import GroceryItemCard from "./GroceryItemCard";
 import Nav, { UserInterface } from "./Nav";
 
+import Footer from "./Footer";
+
 interface UserDashboardProps {
   user?: UserInterface;
 }
@@ -27,12 +29,12 @@ async function UserDashboard({ user }: UserDashboardProps = {}) {
   }));
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500 selection:text-slate-950">
+    <div className="flex flex-col min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500 selection:text-slate-950">
       {/* Navigation Bar */}
       <Nav user={user} />
 
       {/* Main Container matching max-w-7xl and padding from HeroSection */}
-      <main className="max-w-7xl mx-auto px-4 md:px-8 py-6 space-y-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 md:px-8 py-6 space-y-8">
         {/* Hero Section */}
         <section>
           <HeroSection />
@@ -70,6 +72,9 @@ async function UserDashboard({ user }: UserDashboardProps = {}) {
           </div>
         </section>
       </main>
+
+      {/* Footer */}
+      <Footer />
     </div>
   );
 }
