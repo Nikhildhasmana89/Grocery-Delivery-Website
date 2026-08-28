@@ -57,6 +57,15 @@ export async function POST(req: NextRequest) {
       image: imageUrl,
     });
 
+    // 6. Invalidate product cache immediately
+    try {
+      const { revalidateTag, revalidatePath } = await import("next/cache");
+      (revalidateTag as any)("products-cache", "default");
+      revalidatePath("/", "layout");
+    } catch (cacheErr) {
+      console.warn("⚠️ Cache revalidation notice:", cacheErr);
+    }
+
     return NextResponse.json(
       {
         message: "Image successfully uploaded to Cloudinary & Grocery item created!",
@@ -69,6 +78,19 @@ export async function POST(req: NextRequest) {
     console.error("Error creating grocery item:", error);
     return NextResponse.json(
       { message: "Failed to add grocery item", error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET() {
+  try {
+    const { getCombinedGroceries } = await import("@/lib/getCombinedGroceries");
+    const groceries = await getCombinedGroceries();
+    return NextResponse.json({ success: true, groceries });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, message: "Failed to fetch groceries", error: error.message },
       { status: 500 }
     );
   }

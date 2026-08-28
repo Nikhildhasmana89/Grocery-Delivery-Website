@@ -1,81 +1,43 @@
-import connectDB from "@/lib/db";
-import Grocery from "@/models/grocery.model";
+import { getCombinedGroceries } from "@/lib/getCombinedGroceries";
 import HeroSection from "./HeroSection";
-import CategorySlide from "./CategorySlider";
-import GroceryItemCard from "./GroceryItemCard";
+import UserProductSection from "./UserProductSection";
 import Nav, { UserInterface } from "./Nav";
+import { UserThemeProvider } from "@/context/ThemeContext";
 
 import Footer from "./Footer";
+import AIAssistantWidget from "./AIAssistantWidget";
 
 interface UserDashboardProps {
   user?: UserInterface;
 }
 
 async function UserDashboard({ user }: UserDashboardProps = {}) {
-  await connectDB();
-
-  const groceries = await Grocery.find()
-    .select("_id name category price unit image")
-    .sort({ createdAt: -1 })
-    .lean();
-
-  const plainGroceries = groceries.map((g: any) => ({
-    _id: g._id ? g._id.toString() : "",
-    name: g.name,
-    category: g.category || "",
-    price: g.price,
-    unit: g.unit || "",
-    image: g.image || "",
-  }));
+  const plainGroceries = await getCombinedGroceries();
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500 selection:text-slate-950">
-      {/* Navigation Bar */}
-      <Nav user={user} />
+    <UserThemeProvider>
+      <div className="flex flex-col min-h-screen font-sans selection:bg-emerald-500 selection:text-slate-950">
+        {/* Navigation Bar */}
+        <Nav user={user} />
 
-      {/* Main Container matching max-w-7xl and padding from HeroSection */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 md:px-8 py-6 space-y-8">
-        {/* Hero Section */}
-        <section>
-          <HeroSection />
-        </section>
+        {/* Main Container matching max-w-7xl and padding from HeroSection */}
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 md:px-8 py-6 space-y-8">
+          {/* Hero Section */}
+          <section>
+            <HeroSection />
+          </section>
 
-        {/* Category Slider Section */}
-        <section className="py-2">
-          <CategorySlide />
-        </section>
+          {/* Interactive Product & Category Section */}
+          <UserProductSection initialGroceries={plainGroceries} />
+        </main>
 
-        {/* Grocery Items Section */}
-        <section className="space-y-6 pt-4">
-          {/* Section Header */}
-          <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-            <div className="flex items-center gap-3">
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-                Fresh Products
-              </h2>
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                {plainGroceries.length} Items
-              </span>
-            </div>
-          </div>
+        {/* AI Assistant */}
+        <AIAssistantWidget />
 
-          {/* Grocery Grid with Dark Theme Card Stagger & Hover FX */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-            {plainGroceries.map((item: any) => (
-              <div
-                key={item._id}
-                className="transform transition-all duration-300 hover:-translate-y-1"
-              >
-                <GroceryItemCard item={item} />
-              </div>
-            ))}
-          </div>
-        </section>
-      </main>
-
-      {/* Footer */}
-      <Footer />
-    </div>
+        {/* Footer */}
+        <Footer />
+      </div>
+    </UserThemeProvider>
   );
 }
 

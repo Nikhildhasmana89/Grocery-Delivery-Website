@@ -6,6 +6,7 @@ import { Plus, Minus, ShoppingBag, Sparkles } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "@/redux/store";
 import { addToCart, decreaseQuantity } from "@/redux/CardSlice";
+import { useUserTheme } from "@/context/ThemeContext";
 
 export interface IGrocery {
   _id?: string;
@@ -20,6 +21,8 @@ export interface IGrocery {
 
 export default function GroceryItemCard({ item }: { item: IGrocery }) {
   const dispatch = useDispatch<AppDispatch>();
+  const { theme } = useUserTheme();
+  const isLight = theme === "light";
 
   const quantity = useSelector((state: RootState) => {
     if (!item._id) return 0;
@@ -37,7 +40,11 @@ export default function GroceryItemCard({ item }: { item: IGrocery }) {
       animate={{ opacity: 1, scale: 1, y: 0 }}
       whileHover={{ y: -4, scale: 1.01 }}
       transition={{ duration: 0.25, ease: "easeOut" }}
-      className="group relative flex flex-col justify-between overflow-hidden rounded-xl bg-slate-900/90 border border-slate-800/80 p-2.5 shadow-md shadow-slate-950/60 hover:border-emerald-500/50 hover:shadow-lg hover:shadow-emerald-500/15 transition-all duration-300 h-full"
+      className={`group relative flex flex-col justify-between overflow-hidden rounded-xl p-2.5 transition-all duration-300 h-full ${
+        isLight
+          ? "bg-white border border-slate-200 shadow-md shadow-slate-200/50 hover:border-emerald-500/60 hover:shadow-lg hover:shadow-emerald-500/10"
+          : "bg-slate-900/90 border border-slate-800/80 shadow-md shadow-slate-950/60 hover:border-emerald-500/50 hover:shadow-lg hover:shadow-emerald-500/15"
+      }`}
     >
       {/* Top Ambient Glow Effect */}
       <motion.div 
@@ -47,12 +54,18 @@ export default function GroceryItemCard({ item }: { item: IGrocery }) {
       {/* Main Content Wrap */}
       <div>
         {/* Aspect ratio container */}
-        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg bg-slate-950/80 border border-slate-800/60 mb-2.5 flex items-center justify-center">
+        <div className={`relative aspect-[4/3] w-full overflow-hidden rounded-lg mb-2.5 flex items-center justify-center border ${
+          isLight ? "bg-slate-50 border-slate-200" : "bg-slate-950/80 border-slate-800/60"
+        }`}>
           
           {/* Category Chip */}
           {item.category && (
-            <span className="absolute top-1.5 left-1.5 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-extrabold tracking-wide uppercase bg-slate-950/80 text-emerald-400 border border-emerald-500/30 backdrop-blur-md">
-              <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+            <span className={`absolute top-1.5 left-1.5 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-extrabold tracking-wide uppercase backdrop-blur-md border ${
+              isLight
+                ? "bg-white/90 text-emerald-700 border-emerald-500/30"
+                : "bg-slate-950/80 text-emerald-400 border-emerald-500/30"
+            }`}>
+              <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
               {item.category}
             </span>
           )}
@@ -62,6 +75,8 @@ export default function GroceryItemCard({ item }: { item: IGrocery }) {
             <motion.img
               src={item.image}
               alt={item.name}
+              loading="lazy"
+              decoding="async"
               className="h-full w-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out"
             />
           ) : (
@@ -79,12 +94,16 @@ export default function GroceryItemCard({ item }: { item: IGrocery }) {
 
         {/* Compact Item Title & Unit */}
         <div className="space-y-0.5 px-0.5">
-          <h3 className="text-xs sm:text-sm font-bold text-white tracking-tight line-clamp-1 group-hover:text-emerald-400 transition-colors">
+          <h3 className={`text-xs sm:text-sm font-bold tracking-tight line-clamp-1 transition-colors ${
+            isLight ? "text-slate-900 group-hover:text-emerald-600" : "text-white group-hover:text-emerald-400"
+          }`}>
             {item.name}
           </h3>
           
           {item.unit && (
-            <p className="text-[10px] font-medium text-slate-400">
+            <p className={`text-[10px] font-medium ${
+              isLight ? "text-slate-500" : "text-slate-400"
+            }`}>
               {item.unit}
             </p>
           )}
@@ -92,10 +111,16 @@ export default function GroceryItemCard({ item }: { item: IGrocery }) {
       </div>
 
       {/* Footer / Price & Add or Quantity Button */}
-      <div className="flex items-center justify-between pt-2 mt-2 border-t border-slate-800/80 px-0.5">
+      <div className={`flex items-center justify-between pt-2 mt-2 border-t px-0.5 ${
+        isLight ? "border-slate-200" : "border-slate-800/80"
+      }`}>
         <div className="flex items-baseline gap-0.5">
-          <span className="text-[10px] font-black text-emerald-400">₹</span>
-          <span className="text-sm sm:text-base font-black text-white tracking-tight">
+          <span className={`text-[10px] font-black ${
+            isLight ? "text-emerald-600" : "text-emerald-400"
+          }`}>₹</span>
+          <span className={`text-sm sm:text-base font-black tracking-tight ${
+            isLight ? "text-slate-900" : "text-white"
+          }`}>
             {item.price}
           </span>
         </div>
@@ -116,18 +141,24 @@ export default function GroceryItemCard({ item }: { item: IGrocery }) {
           <motion.div 
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="flex items-center gap-2 px-1.5 py-0.5 rounded-lg bg-slate-800 border border-emerald-500/30 text-white font-bold text-xs"
+            className={`flex items-center gap-2 px-1.5 py-0.5 rounded-lg border text-xs font-bold ${
+              isLight ? "bg-emerald-50 border-emerald-300 text-slate-900" : "bg-slate-800 border-emerald-500/30 text-white"
+            }`}
           >
             <button
               type="button"
-              className="p-1 hover:bg-slate-700 rounded text-emerald-400 transition-colors cursor-pointer"
+              className={`p-1 rounded transition-colors cursor-pointer ${
+                isLight ? "hover:bg-emerald-200/60 text-emerald-700" : "hover:bg-slate-700 text-emerald-400"
+              }`}
               onClick={() => item._id && dispatch(decreaseQuantity(item._id))}
               aria-label="Decrease quantity"
             >
               <Minus className="w-3 h-3 stroke-[3]" />
             </button>
             
-            <span className="text-xs font-black min-w-[14px] text-center text-emerald-400">
+            <span className={`text-xs font-black min-w-[14px] text-center ${
+              isLight ? "text-emerald-700" : "text-emerald-400"
+            }`}>
               {quantity}
             </span>
 

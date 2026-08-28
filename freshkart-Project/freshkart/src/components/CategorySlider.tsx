@@ -17,30 +17,35 @@ import {
   ChevronRight,
   Sparkles,
 } from "lucide-react";
+import { useUserTheme } from "@/context/ThemeContext";
 
-const CATEGORIES = [
-  { id: "all", name: "All Items", icon: Sparkles, color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-  { id: "fruits & vegetables", name: "Fruits & Veggies", icon: Apple, color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
-  { id: "dairy & eggs", name: "Dairy & Eggs", icon: Milk, color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
-  { id: "bakery & bread", name: "Bakery & Bread", icon: Croissant, color: "text-yellow-400 bg-yellow-500/10 border-yellow-500/20" },
-  { id: "meat & seafood", name: "Meat & Seafood", icon: Fish, color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
-  { id: "snacks & beverages", name: "Snacks & Drinks", icon: CupSoda, color: "text-purple-400 bg-purple-500/10 border-purple-500/20" },
-  { id: "pantry & staples", name: "Pantry & Staples", icon: Wheat, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
-  { id: "frozen foods", name: "Frozen Foods", icon: Snowflake, color: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
-  { id: "health & wellness", name: "Health & Care", icon: HeartPulse, color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-  { id: "baby care", name: "Baby Care", icon: Baby, color: "text-pink-400 bg-pink-500/10 border-pink-500/20" },
-  { id: "household essentials", name: "Household", icon: Home, color: "text-indigo-400 bg-indigo-500/10 border-indigo-500/20" },
+export const CATEGORIES = [
+  { id: "all", name: "All Items", icon: Sparkles, color: "text-emerald-400" },
+  { id: "fruits & vegetables", name: "Fruits & Veggies", icon: Apple, color: "text-amber-400" },
+  { id: "dairy & eggs", name: "Dairy & Eggs", icon: Milk, color: "text-blue-400" },
+  { id: "bakery & bread", name: "Bakery & Bread", icon: Croissant, color: "text-yellow-400" },
+  { id: "meat & seafood", name: "Meat & Seafood", icon: Fish, color: "text-rose-400" },
+  { id: "snacks & beverages", name: "Snacks & Drinks", icon: CupSoda, color: "text-purple-400" },
+  { id: "pantry & staples", name: "Pantry & Staples", icon: Wheat, color: "text-amber-500" },
+  { id: "frozen foods", name: "Frozen Foods", icon: Snowflake, color: "text-sky-400" },
+  { id: "health & wellness", name: "Health & Care", icon: HeartPulse, color: "text-emerald-400" },
+  { id: "baby care", name: "Baby Care", icon: Baby, color: "text-pink-400" },
+  { id: "household essentials", name: "Household", icon: Home, color: "text-indigo-400" },
 ];
 
 interface CategorySliderProps {
   onSelectCategory?: (categoryId: string) => void;
   selectedCategory?: string;
+  isCompactHeader?: boolean;
 }
 
 export default function CategorySlide({
   onSelectCategory,
   selectedCategory = "all",
+  isCompactHeader = false,
 }: CategorySliderProps) {
+  const { theme } = useUserTheme();
+  const isLight = theme === "light";
   const [active, setActive] = useState(selectedCategory);
   const containerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -49,8 +54,8 @@ export default function CategorySlide({
   const checkScroll = () => {
     if (containerRef.current) {
       const { scrollLeft, scrollWidth, clientWidth } = containerRef.current;
-      setCanScrollLeft(scrollLeft > 10);
-      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 10);
+      setCanScrollLeft(scrollLeft > 5);
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5);
     }
   };
 
@@ -60,9 +65,15 @@ export default function CategorySlide({
     return () => window.removeEventListener("resize", checkScroll);
   }, []);
 
+  useEffect(() => {
+    if (selectedCategory) {
+      setActive(selectedCategory);
+    }
+  }, [selectedCategory]);
+
   const handleScroll = (direction: "left" | "right") => {
     if (containerRef.current) {
-      const scrollAmount = direction === "left" ? -280 : 280;
+      const scrollAmount = direction === "left" ? -240 : 240;
       containerRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
     }
   };
@@ -73,45 +84,28 @@ export default function CategorySlide({
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 py-2 sm:py-4 select-none">
-      {/* Header */}
-      <div className="flex items-end justify-between mb-3 px-1">
-        <div>
-          <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
-            Shop by Category
-          </h2>
-          <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-            Fresh groceries & daily necessities
-          </p>
-        </div>
-
-        {/* Scroll Arrows */}
-        <div className="hidden md:flex items-center gap-2">
+    <div className="w-full relative select-none">
+      <div className="flex items-center justify-between relative group/slider">
+        {/* Left Arrow */}
+        {canScrollLeft && (
           <button
             onClick={() => handleScroll("left")}
-            disabled={!canScrollLeft}
-            className="p-1.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 disabled:opacity-20 hover:bg-white/10 transition-all"
-            aria-label="Previous"
+            className={`hidden md:flex absolute left-0 z-20 p-1.5 rounded-full border shadow-md transition-all cursor-pointer ${
+              isLight
+                ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+                : "bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800"
+            }`}
+            aria-label="Scroll left"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={() => handleScroll("right")}
-            disabled={!canScrollRight}
-            className="p-1.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 disabled:opacity-20 hover:bg-white/10 transition-all"
-            aria-label="Next"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+        )}
 
-      {/* Slider */}
-      <div className="relative">
+        {/* Scroll Container */}
         <div
           ref={containerRef}
           onScroll={checkScroll}
-          className="flex items-center gap-2.5 sm:gap-3.5 overflow-x-auto scrollbar-none py-2 px-1 touch-pan-x"
+          className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none py-1.5 px-0.5 w-full touch-pan-x"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {CATEGORIES.map((cat) => {
@@ -119,50 +113,58 @@ export default function CategorySlide({
             const isSelected = active === cat.id;
 
             return (
-              <motion.button
+              <button
                 key={cat.id}
+                type="button"
                 onClick={() => handleSelect(cat.id)}
-                whileHover={{ y: -3 }}
-                whileTap={{ scale: 0.96 }}
-                className={`relative flex-shrink-0 flex sm:flex-col items-center justify-start sm:justify-center 
-                  w-[130px] h-[48px] sm:w-[110px] sm:h-[105px] 
-                  px-3 sm:px-2 py-2 sm:py-3 
-                  rounded-2xl transition-all duration-300 backdrop-blur-md ${
-                    isSelected
-                      ? "bg-emerald-500/10 border border-emerald-500/50 text-white shadow-[0_0_20px_rgba(16,185,129,0.15)]"
-                      : "bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 text-slate-300 hover:text-white hover:border-white/20"
-                  }`}
+                className={`relative flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer border ${
+                  isSelected
+                    ? isLight
+                      ? "bg-emerald-50 border-emerald-500 text-emerald-950 font-bold shadow-sm shadow-emerald-500/10"
+                      : "bg-emerald-500/15 border-emerald-500/50 text-emerald-400 font-bold shadow-sm shadow-emerald-500/20"
+                    : isLight
+                    ? "bg-slate-50 border-slate-200/80 text-slate-700 hover:bg-slate-100 hover:text-slate-900 hover:border-slate-300"
+                    : "bg-slate-900/60 border-slate-800/70 text-slate-300 hover:bg-slate-800/80 hover:text-white hover:border-slate-700"
+                }`}
               >
-                {/* Minimal Active Bottom Bar Indicator */}
+                <Icon
+                  className={`w-3.5 h-3.5 shrink-0 ${
+                    isSelected
+                      ? isLight
+                        ? "text-emerald-600"
+                        : "text-emerald-400"
+                      : cat.color
+                  }`}
+                />
+                <span>{cat.name}</span>
+
+                {/* Active Indicator Bar */}
                 {isSelected && (
                   <motion.div
-                    layoutId="activeBar"
-                    className="absolute bottom-0 left-4 right-4 h-[2px] bg-emerald-400 rounded-full shadow-[0_0_8px_#34d399]"
+                    layoutId="activeCategoryTab"
+                    className="absolute bottom-0 left-3 right-3 h-[2px] bg-emerald-500 rounded-full"
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
-
-                {/* Icon Container */}
-                <div
-                  className={`w-7 h-7 sm:w-10 sm:h-10 
-                    mr-2.5 sm:mr-0 sm:mb-2 
-                    rounded-xl border flex items-center justify-center shrink-0 transition-colors ${
-                      isSelected
-                        ? "bg-emerald-500/20 border-emerald-400/40 text-emerald-400"
-                        : cat.color
-                    }`}
-                >
-                  <Icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
-                </div>
-
-                {/* Name Label */}
-                <span className="text-xs sm:text-[11px] font-medium text-left sm:text-center leading-tight line-clamp-1">
-                  {cat.name}
-                </span>
-              </motion.button>
+              </button>
             );
           })}
         </div>
+
+        {/* Right Arrow */}
+        {canScrollRight && (
+          <button
+            onClick={() => handleScroll("right")}
+            className={`hidden md:flex absolute right-0 z-20 p-1.5 rounded-full border shadow-md transition-all cursor-pointer ${
+              isLight
+                ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+                : "bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800"
+            }`}
+            aria-label="Scroll right"
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );

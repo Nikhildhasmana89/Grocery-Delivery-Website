@@ -181,7 +181,10 @@ export default function AdminDashboard({ user }: { user?: UserInterface }) {
         }
       } catch (err: any) {
         console.error("❌ Fetch Dashboard Error:", err);
-        setError("Unable to connect to dashboard backend. Please try again.");
+        const serverError =
+          err.response?.data?.message ||
+          (err.code === "ECONNABORTED" ? "Dashboard backend request timed out." : err.message);
+        setError(serverError || "Unable to connect to dashboard backend. Please try again.");
       } finally {
         setLoading(false);
         setRefreshing(false);

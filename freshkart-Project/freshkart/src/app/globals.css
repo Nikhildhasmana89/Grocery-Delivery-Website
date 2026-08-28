@@ -1,2 +1,103 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
+
+/* Freshkart Grocery Light Theme */
+.user-light-mode {
+  --bg-main: #ffffff;
+  --bg-secondary: #f8fafc;
+  --card-bg: #ffffff;
+  --text-main: #111827;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --primary-green: #00c853;
+  --light-green-bg: #e8f8ef;
+
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+
+/* Background Overrides for User Section */
+.user-light-mode .bg-\[\#07090E\],
+.user-light-mode .bg-\[\#020617\],
+.user-light-mode .bg-slate-950,
+.user-light-mode .bg-slate-950\/90,
+.user-light-mode .bg-slate-950\/80,
+.user-light-mode .bg-slate-950\/60,
+.user-light-mode .bg-slate-950\/50,
+.user-light-mode .bg-slate-950\/40,
+.user-light-mode .bg-slate-900,
+.user-light-mode .bg-slate-900\/90,
+.user-light-mode .bg-slate-900\/80,
+.user-light-mode .bg-slate-900\/60,
+.user-light-mode .bg-slate-900\/40,
+.user-light-mode .bg-slate-900\/50 {
+  background-color: #ffffff !important;
+}
+
+.user-light-mode .bg-slate-800,
+.user-light-mode .bg-slate-800\/90,
+.user-light-mode .bg-slate-800\/80,
+.user-light-mode .bg-slate-800\/60,
+.user-light-mode .bg-slate-800\/50,
+.user-light-mode .bg-slate-800\/40 {
+  background-color: #f8fafc !important;
+}
+
+/* Border Overrides */
+.user-light-mode .border-slate-800,
+.user-light-mode .border-slate-800\/80,
+.user-light-mode .border-slate-800\/60,
+.user-light-mode .border-slate-700,
+.user-light-mode .border-slate-700\/80,
+.user-light-mode .border-slate-700\/60 {
+  border-color: #e2e8f0 !important;
+}
+
+/* Typography Overrides */
+.user-light-mode .text-white,
+.user-light-mode .text-slate-100,
+.user-light-mode .text-slate-200,
+.user-light-mode .text-slate-300 {
+  color: #111827 !important;
+}
+
+.user-light-mode .text-slate-400,
+.user-light-mode .text-slate-500 {
+  color: #64748b !important;
+}
+
+/* Green Accents & Inputs */
+.user-light-mode .text-emerald-400 {
+  color: #00c853 !important;
+}
+
+.user-light-mode .bg-emerald-500\/10,
+.user-light-mode .bg-emerald-500\/15,
+.user-light-mode .bg-emerald-500\/20 {
+  background-color: #e8f8ef !important;
+}
+
+.user-light-mode .border-emerald-500\/20,
+.user-light-mode .border-emerald-500\/30,
+.user-light-mode .border-emerald-500\/40,
+.user-light-mode .border-emerald-500\/50 {
+  border-color: #00c853 !important;
+}
+
+/* Form Controls in Light Mode */
+.user-light-mode input[type="text"],
+.user-light-mode input[type="email"],
+.user-light-mode input[type="password"],
+.user-light-mode input[type="number"],
+.user-light-mode input[type="tel"],
+.user-light-mode textarea,
+.user-light-mode select {
+  background-color: #f8fafc !important;
+  color: #111827 !important;
+  border-color: #e2e8f0 !important;
+}
+
+.user-light-mode input::placeholder,
+.user-light-mode textarea::placeholder {
+  color: #94a3b8 !important;
+}

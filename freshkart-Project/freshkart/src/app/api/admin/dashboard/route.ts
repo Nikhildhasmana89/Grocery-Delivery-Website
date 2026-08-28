@@ -13,9 +13,11 @@ export async function GET(req: NextRequest) {
   try {
     // 1. Authenticate & Authorize Admin
     const session = await auth();
-    if (!session?.user?.id || (session.user as any).role !== "admin") {
+    const userRole = String((session?.user as any)?.role || "").trim().toLowerCase();
+
+    if (!session?.user?.id || userRole !== "admin") {
       return NextResponse.json(
-        { success: false, message: "Unauthorized access" },
+        { success: false, message: "Unauthorized: Admin access required" },
         { status: 401 }
       );
     }
@@ -23,8 +25,10 @@ export async function GET(req: NextRequest) {
     await connectDB();
 
     // Ensure models are registered for populates
-    void User;
-    void DeliveryAssignment;
+    if (!mongoose.models.User) mongoose.model("User", User.schema);
+    if (!mongoose.models.Grocery) mongoose.model("Grocery", Grocery.schema);
+    if (!mongoose.models.Order) mongoose.model("Order", Order.schema);
+    if (!mongoose.models.DeliveryAssignment) mongoose.model("DeliveryAssignment", DeliveryAssignment.schema);
 
     const { searchParams } = new URL(req.url);
     const period = searchParams.get("period") || "Today";

@@ -10,6 +10,7 @@ import { signIn, getSession } from "next-auth/react";
 import { useDispatch } from "react-redux";
 import { AppDispatch } from "@/redux/store";
 import { setUserData } from "@/redux/userSlice";
+import { UserThemeProvider } from "@/context/ThemeContext";
 
 type PropType = {
   nextStep?: (s: number) => void;
@@ -132,7 +133,8 @@ export default function Login({ nextStep, previousStep }: PropType) {
   const isFormValid = Boolean(email.trim() && password);
 
   return (
-    <div className="min-h-screen w-full bg-[#07090E] p-4 text-white relative overflow-hidden flex flex-col items-center justify-center font-sans">
+    <UserThemeProvider>
+      <div className="min-h-screen w-full p-4 relative overflow-hidden flex flex-col items-center justify-center font-sans">
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <motion.div
           animate={{
@@ -368,6 +370,7 @@ export default function Login({ nextStep, previousStep }: PropType) {
           )}
         </AnimatePresence>
       </motion.div>
-    </div>
+      </div>
+    </UserThemeProvider>
   );
 }

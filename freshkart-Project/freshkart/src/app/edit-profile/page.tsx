@@ -3,6 +3,7 @@ import connectDB from "@/lib/db";
 import User from "@/models/user.model";
 import { redirect } from "next/navigation";
 import EditRoleMobile from "@/components/EditRoleMobile";
+import { UserThemeProvider } from "@/context/ThemeContext";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +23,12 @@ export default async function EditProfilePage() {
   }
 
   return (
-    <EditRoleMobile
-      initialRole={user.role || "user"}
-      initialMobile={user.mobile || ""}
-      userId={user._id.toString()}
-    />
+    <UserThemeProvider>
+      <EditRoleMobile
+        initialRole={user.role || "user"}
+        initialMobile={user.mobile || ""}
+        userId={user._id.toString()}
+      />
+    </UserThemeProvider>
   );
 }

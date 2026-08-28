@@ -43,8 +43,12 @@ export async function POST(req: NextRequest) {
         groceryId: updatedItem._id.toString(),
         stock: updatedItem.stock,
       });
+
+      const { revalidateTag, revalidatePath } = await import("next/cache");
+      (revalidateTag as any)("products-cache", "default");
+      revalidatePath("/", "layout");
     } catch {
-      // Socket notification is non-blocking
+      // Non-blocking notification & revalidation
     }
 
     return NextResponse.json(
