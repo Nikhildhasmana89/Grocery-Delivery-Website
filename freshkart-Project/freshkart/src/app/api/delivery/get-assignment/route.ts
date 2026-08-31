@@ -39,17 +39,42 @@ export async function GET() {
     const deliveryBoyObjectId = new mongoose.Types.ObjectId(deliveryBoyId);
 
     // ============================================
-    // 2. DATABASE & MODEL REGISTRATION
+    // 2. DATABASE & ROLE / MOBILE CHECK
     // ============================================
 
     await connectDB();
 
-    // Ensure referenced models are registered in Mongoose schema cache
-    void User;
     void Order;
 
+    const dbUser = await User.findById(deliveryBoyId).select("_id role mobile");
+
+    if (!dbUser || !["deliveryBoy", "deliveryboy", "delivery_boy"].includes(dbUser.role)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Only delivery partners can access delivery assignments.",
+        },
+        { status: 403 },
+      );
+    }
+
+    // Strict Delivery Boy Mobile Check
+    if (!dbUser.mobile || !dbUser.mobile.trim()) {
+      return NextResponse.json(
+        {
+          success: true,
+          requiresMobile: true,
+          message:
+            "Please associate your mobile number in the Delivery Boy Dashboard to receive delivery orders.",
+          assignment: [],
+          count: 0,
+        },
+        { status: 200 },
+      );
+    }
+
     // ============================================
-    // 3. GET ASSIGNMENTS
+    // 3. GET ASSIGNMENTS FOR THIS AUTHENTICATED DELIVERY BOY
     // ============================================
 
     const assignments = await DeliveryAssignment.aggregate([
@@ -140,6 +165,7 @@ export async function GET() {
     return NextResponse.json(
       {
         success: true,
+        requiresMobile: false,
         assignment: assignments,
         count: assignments.length,
       },
@@ -159,4 +185,4 @@ export async function GET() {
       { status: 500 },
     );
   }
-}
+}

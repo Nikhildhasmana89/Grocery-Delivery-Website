@@ -19,44 +19,49 @@ export async function GET() {
           success: false,
           message: "Unauthorized",
         },
-        {
-          status: 401,
-        },
+        { status: 401 },
       );
     }
 
-    const deliveryBoyId =
-      String(session.user.id);
-
-    console.log(
-      "========================================",
-    );
-
-    console.log(
-      "🚚 CURRENT DELIVERY ORDER",
-    );
-
-    console.log(
-      "Delivery Boy ID:",
-      deliveryBoyId,
-    );
-
-    console.log(
-      "========================================",
-    );
+    const deliveryBoyId = String(session.user.id);
 
     // ============================================
-    // DATABASE
+    // DATABASE & ROLE / MOBILE CHECK
     // ============================================
 
     await connectDB();
 
-    // Make sure referenced models are registered
-    void User;
     void Order;
 
+    const dbUser = await User.findById(deliveryBoyId).select("_id role mobile");
+
+    if (!dbUser || !["deliveryBoy", "deliveryboy", "delivery_boy"].includes(dbUser.role)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Only delivery partners can access active delivery orders.",
+        },
+        { status: 403 },
+      );
+    }
+
+    if (!dbUser.mobile || !dbUser.mobile.trim()) {
+      return NextResponse.json(
+        {
+          success: true,
+          requiresMobile: true,
+          active: false,
+          activeCount: 0,
+          activeAssignments: [],
+          assignment: null,
+          order: null,
+        },
+        { status: 200 },
+      );
+    }
+
     // ============================================
-    // FIND ACCEPTED ACTIVE ASSIGNMENTS (UP TO 2)
+    // FIND ACCEPTED ACTIVE ASSIGNMENTS FOR THIS DELIVERY BOY
     // ============================================
 
     const activeAssignments = await DeliveryAssignment.find({
@@ -79,87 +84,43 @@ export async function GET() {
 
     const activeCount = activeAssignments.length;
 
-    // ============================================
-    // NO CURRENT ORDERS
-    // ============================================
-
     if (activeCount === 0) {
-      console.log("ℹ️ No active delivery orders");
-
       return NextResponse.json(
         {
           success: true,
+          requiresMobile: false,
           active: false,
           activeCount: 0,
           activeAssignments: [],
           assignment: null,
           order: null,
         },
-        {
-          status: 200,
-        },
+        { status: 200 },
       );
     }
-
-    // ============================================
-    // CURRENT ORDERS FOUND
-    // ============================================
-
-    console.log("========================================");
-    console.log(`✅ ${activeCount} ACTIVE ORDER(S) FOUND`);
-    console.log(
-      "Assignment IDs:",
-      activeAssignments.map((a: any) => String(a._id)),
-    );
-    console.log("========================================");
-
-    // ============================================
-    // RESPONSE
-    // ============================================
 
     return NextResponse.json(
       {
         success: true,
+        requiresMobile: false,
         active: true,
         activeCount,
         activeAssignments,
         assignment: activeAssignments[0],
         order: activeAssignments[0]?.order,
       },
-      {
-        status: 200,
-      },
+      { status: 200 },
     );
   } catch (error: unknown) {
-    console.error(
-      "========================================",
-    );
-
-    console.error(
-      "❌ CURRENT DELIVERY ORDER ERROR",
-    );
-
-    console.error(error);
-
-    console.error(
-      "========================================",
-    );
+    console.error("❌ CURRENT DELIVERY ORDER ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-
-        message:
-          "Failed to get current delivery order",
-
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unknown server error",
+        message: "Failed to get current delivery order",
+        error: error instanceof Error ? error.message : "Unknown server error",
       },
-      {
-        status: 500,
-      },
+      { status: 500 },
     );
   }
 }

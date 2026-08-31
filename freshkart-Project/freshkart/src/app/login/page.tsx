@@ -30,9 +30,6 @@ export default function Login({ nextStep, previousStep }: PropType) {
 
   // Helper function to resolve target route based on user state
   const getRedirectPath = (roleSelected?: boolean, role?: string) => {
-    if (!roleSelected || !role) {
-      return "/edit-profile";
-    }
     switch (role) {
       case "admin":
         return "/admin";
@@ -57,8 +54,7 @@ export default function Login({ nextStep, previousStep }: PropType) {
     try {
       setGoogleLoading(true);
       setErrorMessage("");
-      // Initiates Google OAuth; Middleware will catch unconfigured accounts and route to /edit-profile
-      await signIn("google");
+      await signIn("google", { callbackUrl: "/" });
     } catch (error) {
       console.error("Google Sign-In Error:", error);
       setErrorMessage("Failed to connect with Google.");

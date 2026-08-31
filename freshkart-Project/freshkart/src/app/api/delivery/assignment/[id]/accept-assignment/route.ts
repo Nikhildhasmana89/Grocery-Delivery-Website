@@ -3,6 +3,7 @@ import connectDB from "@/lib/db";
 import emitEventHandler from "@/lib/emitEventHandler";
 import DeliveryAssignment from "@/models/deliveryAssignment.model";
 import Order from "@/models/order.model";
+import User from "@/models/user.model";
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
@@ -34,7 +35,7 @@ export async function POST(
     }
 
     // ============================================
-    // AUTHENTICATION
+    // AUTHENTICATION & ROLE / MOBILE CHECK
     // ============================================
 
     const session = await auth();
@@ -48,6 +49,29 @@ export async function POST(
           message: "Unauthorized or invalid delivery boy session",
         },
         { status: 401 },
+      );
+    }
+
+    const dbUser = await User.findById(deliveryBoyId).select("_id role mobile");
+
+    if (!dbUser || !["deliveryBoy", "deliveryboy", "delivery_boy"].includes(dbUser.role)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Only delivery partners can accept delivery assignments.",
+        },
+        { status: 403 },
+      );
+    }
+
+    if (!dbUser.mobile || !dbUser.mobile.trim()) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "You must connect your mobile number in the Delivery Boy Dashboard before accepting orders.",
+        },
+        { status: 400 },
       );
     }
 
@@ -170,10 +194,6 @@ export async function POST(
       },
     );
 
-    // ============================================
-    // SOMEONE ELSE ACCEPTED FIRST
-    // ============================================
-
     if (!acceptedAssignment) {
       return NextResponse.json(
         {
@@ -185,19 +205,13 @@ export async function POST(
       );
     }
 
-    console.log(
-      "✅ Assignment accepted:",
-      acceptedAssignment._id,
-    );
-
     // ============================================
-    // FIND ORDER
+    // FIND ORDER & UPDATE
     // ============================================
 
     const order = await Order.findById(acceptedAssignment.order);
 
     if (!order) {
-      // ROLLBACK
       await DeliveryAssignment.findOneAndUpdate(
         {
           _id: acceptedAssignment._id,
@@ -222,24 +236,11 @@ export async function POST(
       );
     }
 
-    // ============================================
-    // UPDATE ORDER
-    // ============================================
-
     order.assignment = acceptedAssignment._id;
     order.assignedDeliveryBoy = deliveryBoyObjectId;
     order.status = "out of delivery";
 
     await order.save();
-
-    console.log(
-      "✅ Order assigned successfully:",
-      order._id,
-    );
-
-    // ============================================
-    // REMOVE DELIVERY BOY FROM OTHER BROADCASTED ASSIGNMENTS IF AT CAP (2)
-    // ============================================
 
     const currentActiveCount = await DeliveryAssignment.countDocuments({
       assignedTo: deliveryBoyObjectId,
@@ -262,7 +263,6 @@ export async function POST(
       );
     }
 
-    // Broadcast order-accepted event to all delivery boys room so their dashboards clear this item
     emitEventHandler(
       "order-accepted",
       {
@@ -272,10 +272,6 @@ export async function POST(
       },
       { room: "delivery-boys" },
     ).catch(() => {});
-
-    // ============================================
-    // SUCCESS
-    // ============================================
 
     return NextResponse.json(
       {

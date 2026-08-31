@@ -37,279 +37,121 @@ export const {
   signOut,
   auth,
 } = NextAuth({
-  // ============================================
-  // DEBUG
-  // ============================================
-
   debug: process.env.NODE_ENV === "development",
-
-  // ============================================
-  // TRUST HOST
-  // ============================================
-
   trustHost: true,
 
-  // ============================================
-  // PROVIDERS
-  // ============================================
-
   providers: [
-    // ==========================================
-    // CREDENTIALS
-    // ==========================================
-
     Credentials({
       name: "Credentials",
-
       credentials: {
-        email: {
-          label: "Email",
-          type: "email",
-        },
-
-        password: {
-          label: "Password",
-          type: "password",
-        },
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
       },
-
       async authorize(credentials) {
         try {
           const email =
-            typeof credentials?.email ===
-            "string"
-              ? credentials.email
-                  .trim()
-                  .toLowerCase()
+            typeof credentials?.email === "string"
+              ? credentials.email.trim().toLowerCase()
               : "";
-
           const password =
-            typeof credentials?.password ===
-            "string"
+            typeof credentials?.password === "string"
               ? credentials.password
               : "";
 
           if (!email || !password) {
-            throw new Error(
-              "Please provide both email and password.",
-            );
+            throw new Error("Please provide both email and password.");
           }
-
-          // --------------------------------------
-          // DATABASE
-          // --------------------------------------
 
           await connectDB();
 
-          // --------------------------------------
-          // FIND USER
-          // --------------------------------------
-
-          const user =
-            await User.findOne({
-              email,
-            }).select(
-              "_id email name password role image mobile roleSelected",
-            );
+          const user = await User.findOne({ email }).select(
+            "_id email name password role image mobile roleSelected"
+          );
 
           if (!user) {
-            throw new Error(
-              "Invalid email or password.",
-            );
+            throw new Error("Invalid email or password.");
           }
-
-          // --------------------------------------
-          // GOOGLE-ONLY ACCOUNT
-          // --------------------------------------
 
           if (!user.password) {
-            throw new Error(
-              "Please sign in with Google.",
-            );
+            throw new Error("Please sign in with Google.");
           }
 
-          // --------------------------------------
-          // PASSWORD CHECK
-          // --------------------------------------
-
-          const isMatch =
-            await bcrypt.compare(
-              password,
-              user.password,
-            );
-
+          const isMatch = await bcrypt.compare(password, user.password);
           if (!isMatch) {
-            throw new Error(
-              "Invalid email or password.",
-            );
+            throw new Error("Invalid email or password.");
           }
-
-          // --------------------------------------
-          // RETURN USER
-          // --------------------------------------
 
           return {
             id: user._id.toString(),
-
-            email:
-              user.email ?? "",
-
-            name:
-              user.name ?? "",
-
-            role:
-              user.role ?? "user",
-
-            image:
-              user.image ?? "",
-
-            mobile:
-              user.mobile ?? "",
-
-            roleSelected:
-              user.roleSelected ??
-              false,
+            email: user.email ?? "",
+            name: user.name ?? "",
+            role: user.role ?? "user",
+            image: user.image ?? "",
+            mobile: user.mobile ?? "",
+            roleSelected: user.roleSelected ?? true,
           };
         } catch (error) {
-          console.error(
-            "❌ Credentials authorize error:",
-            error,
-          );
-
+          console.error("❌ Credentials authorize error:", error);
           throw error;
         }
       },
     }),
 
-    // ==========================================
-    // GOOGLE
-    // ==========================================
-
     Google({
-      clientId:
-        process.env.GOOGLE_CLIENT_ID ?? "",
-
-      clientSecret:
-        process.env.GOOGLE_CLIENT_SECRET ?? "",
-
+      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
       allowDangerousEmailAccountLinking: true,
-
       authorization: {
         params: {
-          prompt:
-            "select_account",
-
-          access_type:
-            "offline",
-
-          response_type:
-            "code",
+          prompt: "select_account",
+          access_type: "offline",
+          response_type: "code",
         },
       },
     }),
   ],
 
-  // ============================================
-  // CALLBACKS
-  // ============================================
-
   callbacks: {
-    // ==========================================
-    // SIGN IN
-    // ==========================================
-
-    async signIn({
-      user,
-      account,
-    }) {
-      // ----------------------------------------
-      // GOOGLE LOGIN
-      // ----------------------------------------
-
-      if (
-        account?.provider === "google"
-      ) {
+    async signIn({ user, account }) {
+      if (account?.provider === "google") {
         try {
           await connectDB();
 
-          const email =
-            user.email
-              ?.trim()
-              .toLowerCase();
-
+          const email = user.email?.trim().toLowerCase();
           if (!email) {
-            console.error(
-              "❌ Google account has no email",
-            );
-
+            console.error("❌ Google account has no email");
             return false;
           }
 
-          let dbUser =
-            await User.findOne({
-              email,
-            }).select(
-              "_id email name role image mobile roleSelected",
-            );
+          // Clean legacy empty string mobile entries if any
+          await User.updateMany({ mobile: "" }, { $unset: { mobile: 1 } }).catch(() => {});
 
-          // --------------------------------------
-          // CREATE GOOGLE USER
-          // --------------------------------------
+          let dbUser = await User.findOne({ email }).select(
+            "_id email name role image mobile roleSelected"
+          );
 
           if (!dbUser) {
-            dbUser =
-              await User.create({
-                name:
-                  user.name ?? "",
-
-                email,
-
-                image:
-                  user.image ?? "",
-
-                role: "user",
-
-                roleSelected:
-                  false,
-              });
-
-            console.log(
-              "✅ Google user created:",
-              dbUser._id,
-            );
+            dbUser = await User.create({
+              name: user.name ?? "",
+              email,
+              image: user.image ?? "",
+              role: "user",
+              roleSelected: true,
+            });
+            console.log("✅ Google user created:", dbUser._id);
+          } else if (!dbUser.image && user.image) {
+            dbUser.image = user.image;
+            await dbUser.save();
           }
 
-          // --------------------------------------
-          // COPY DATABASE USER DATA
-          // --------------------------------------
-
-          user.id =
-            dbUser._id.toString();
-
-          (
-            user as any
-          ).role =
-            dbUser.role ??
-            "user";
-
-          (
-            user as any
-          ).mobile =
-            dbUser.mobile ?? "";
-
-          (
-            user as any
-          ).roleSelected =
-            dbUser.roleSelected ??
-            false;
+          user.id = dbUser._id.toString();
+          (user as any).role = dbUser.role ?? "user";
+          (user as any).mobile = dbUser.mobile ?? "";
+          (user as any).roleSelected = dbUser.roleSelected ?? true;
 
           return true;
         } catch (error) {
-          console.error(
-            "❌ Google sign-in error:",
-            error,
-          );
-
+          console.error("❌ Google sign-in error:", error);
           return false;
         }
       }
@@ -317,163 +159,56 @@ export const {
       return true;
     },
 
-    // ==========================================
-    // JWT
-    // ==========================================
-
-    async jwt({
-      token,
-      user,
-      trigger,
-      session,
-    }) {
-      // ----------------------------------------
-      // INITIAL LOGIN
-      // ----------------------------------------
-
+    async jwt({ token, user, trigger, session }) {
       if (user) {
-        token.id =
-          user.id;
-
-        token.email =
-          user.email ?? "";
-
-        token.name =
-          user.name ?? "";
-
-        token.picture =
-          user.image ?? "";
-
-        token.role =
-          (user as any).role ??
-          "user";
-
-        token.mobile =
-          (user as any).mobile ??
-          "";
-
-        token.roleSelected =
-          (user as any)
-            .roleSelected ??
-          false;
+        token.id = user.id;
+        token.email = user.email ?? "";
+        token.name = user.name ?? "";
+        token.picture = user.image ?? "";
+        token.role = (user as any).role ?? "user";
+        token.mobile = (user as any).mobile ?? "";
+        token.roleSelected = (user as any).roleSelected ?? true;
       }
 
-      // ----------------------------------------
-      // SESSION UPDATE
-      // ----------------------------------------
-
-      if (
-        trigger === "update" &&
-        session
-      ) {
-        if (
-          session.role !==
-          undefined
-        ) {
-          token.role =
-            session.role;
+      if (trigger === "update" && session) {
+        if (session.role !== undefined) {
+          token.role = session.role;
         }
-
-        if (
-          session.mobile !==
-          undefined
-        ) {
-          token.mobile =
-            session.mobile;
+        if (session.mobile !== undefined) {
+          token.mobile = session.mobile;
         }
-
-        if (
-          session.roleSelected !==
-          undefined
-        ) {
-          token.roleSelected =
-            session.roleSelected;
+        if (session.roleSelected !== undefined) {
+          token.roleSelected = session.roleSelected;
         }
       }
 
       return token;
     },
 
-    // ==========================================
-    // SESSION
-    // ==========================================
-
-    async session({
-      session,
-      token,
-    }) {
+    async session({ session, token }) {
       if (session.user) {
-        session.user.id =
-          String(
-            token.id ?? "",
-          );
-
-        session.user.email =
-          String(
-            token.email ?? "",
-          );
-
-        session.user.name =
-          String(
-            token.name ?? "",
-          );
-
-        session.user.image =
-          String(
-            token.picture ?? "",
-          );
-
-        (
-          session.user as any
-        ).role =
-          String(
-            token.role ??
-              "user",
-          );
-
-        (
-          session.user as any
-        ).mobile =
-          String(
-            token.mobile ?? "",
-          );
-
-        (
-          session.user as any
-        ).roleSelected =
-          Boolean(
-            token.roleSelected,
-          );
+        session.user.id = String(token.id ?? "");
+        session.user.email = String(token.email ?? "");
+        session.user.name = String(token.name ?? "");
+        session.user.image = String(token.picture ?? "");
+        (session.user as any).role = String(token.role ?? "user");
+        (session.user as any).mobile = String(token.mobile ?? "");
+        (session.user as any).roleSelected = Boolean(token.roleSelected ?? true);
       }
 
       return session;
     },
   },
 
-  // ============================================
-  // PAGES
-  // ============================================
-
   pages: {
     signIn: "/login",
     error: "/login",
   },
 
-  // ============================================
-  // SESSION
-  // ============================================
-
   session: {
     strategy: "jwt",
-
-    maxAge:
-      30 * 24 * 60 * 60,
+    maxAge: 30 * 24 * 60 * 60,
   },
 
-  // ============================================
-  // SECRET
-  // ============================================
-
-  secret:
-    process.env.AUTH_SECRET,
+  secret: process.env.AUTH_SECRET,
 });

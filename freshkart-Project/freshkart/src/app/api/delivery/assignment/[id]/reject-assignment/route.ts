@@ -51,10 +51,10 @@ export async function POST(
     const deliveryBoyObjectId = new mongoose.Types.ObjectId(deliveryBoyId);
 
     // ============================================
-    // 2. VERIFY ROLE IS DELIVERY BOY
+    // 2. VERIFY ROLE IS DELIVERY BOY & MOBILE CONNECTED
     // ============================================
 
-    const user = await User.findById(deliveryBoyObjectId).select("role").lean();
+    const user = await User.findById(deliveryBoyObjectId).select("role mobile").lean();
 
     const isDeliveryBoy =
       user &&
@@ -67,6 +67,17 @@ export async function POST(
           message: "Forbidden: Only delivery boys can reject delivery assignments",
         },
         { status: 403 },
+      );
+    }
+
+    if (!user.mobile || !user.mobile.trim()) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "You must connect your mobile number in the Delivery Boy Dashboard before managing assignments.",
+        },
+        { status: 400 },
       );
     }
 
@@ -175,7 +186,6 @@ export async function POST(
       },
     );
 
-    // If atomic update failed (race condition)
     if (!updatedAssignment) {
       return NextResponse.json(
         {
@@ -188,25 +198,12 @@ export async function POST(
 
     console.log("❌ Assignment rejected by delivery boy:", deliveryBoyId);
 
-    // ============================================
-    // 7. IF ALL BROADCASTED BOYS REJECTED, MARK ASSIGNMENT REJECTED
-    // Note: Customer Order status STILL remains "out of delivery"
-    // ============================================
-
     if (updatedAssignment.broadcastedTo.length === 0) {
       updatedAssignment.status = "rejected";
       await updatedAssignment.save();
-      console.log(
-        "ℹ️ All broadcasted delivery boys rejected. Assignment marked as rejected.",
-      );
     }
 
-    // Verify order exists & preserve order.status
     void Order;
-
-    // ============================================
-    // 8. REAL-TIME SOCKET NOTIFICATIONS
-    // ============================================
 
     const notificationPayload = {
       assignmentId: String(updatedAssignment._id),
@@ -216,7 +213,6 @@ export async function POST(
       remainingBroadcastCount: updatedAssignment.broadcastedTo.length,
     };
 
-    // Notify room delivery-boys and individual user room
     emitEventHandler("order-rejected", notificationPayload, {
       room: "delivery-boys",
     }).catch(() => {});
@@ -224,10 +220,6 @@ export async function POST(
     emitEventHandler("order-rejected", notificationPayload, {
       userId: deliveryBoyId,
     }).catch(() => {});
-
-    // ============================================
-    // 9. SUCCESS RESPONSE
-    // ============================================
 
     return NextResponse.json(
       {

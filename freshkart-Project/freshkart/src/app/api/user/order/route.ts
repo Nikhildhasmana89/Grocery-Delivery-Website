@@ -141,6 +141,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Save mobile number to user's profile if user doesn't have one saved yet
+    if ((!user.mobile || !user.mobile.trim()) && mobile && String(mobile).trim()) {
+      const trimmedMobile = String(mobile).trim();
+      const existingMobileUser = await User.findOne({
+        mobile: trimmedMobile,
+        _id: { $ne: user._id },
+      });
+      if (!existingMobileUser) {
+        user.mobile = trimmedMobile;
+        await user.save();
+      }
+    }
+
     // ==========================================
     // GENERATE UNIQUE ORDER REQUEST ID
     // ==========================================
@@ -210,25 +223,6 @@ export async function POST(req: NextRequest) {
       newOrder.orderRequestId
     );
 
-    // ==========================================
-    // DO NOT ASSIGN DELIVERY BOY HERE
-    // ==========================================
-    //
-    // The admin should change the order to:
-    //
-    // "out of delivery"
-    //
-    // Then your admin status API creates
-    // the DeliveryAssignment and broadcasts
-    // "new-assignment".
-    //
-    // ==========================================
-
-    // Optional notification for other parts
-    // of your application.
-    //
-    // This broadcasts to every connected socket.
-    //
     try {
       await emitEventHandler(
         "new-order",
@@ -249,9 +243,6 @@ export async function POST(req: NextRequest) {
         "⚠️ New order socket notification failed:",
         socketError
       );
-
-      // Do NOT fail order creation because
-      // Socket.IO notification failed.
     }
 
     // ==========================================
