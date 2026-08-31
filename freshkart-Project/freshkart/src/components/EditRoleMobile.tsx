@@ -95,7 +95,20 @@ export default function EditRoleMobile({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     setStatus(null);
+
+    // If role has not changed, navigate without redundant API calls
+    if (selectedRole.toLowerCase() === initialRole.toLowerCase()) {
+      if (previousStep) {
+        previousStep(1);
+      } else {
+        router.push("/");
+      }
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -111,14 +124,14 @@ export default function EditRoleMobile({
 
       setIsSuccess(true);
 
-      // Perform redirect transition
+      // Perform single clean navigation transition
       setTimeout(() => {
         if (previousStep) {
           previousStep(1);
         } else {
           window.location.href = "/";
         }
-      }, 1000);
+      }, 800);
 
     } catch (err: unknown) {
       let apiError = "Role selection failed. Please try again.";

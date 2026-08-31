@@ -3,9 +3,6 @@ import connectDB from "@/lib/db";
 import User from "@/models/user.model";
 import { redirect } from "next/navigation";
 
-import EditRoleMobile from "@/components/EditRoleMobile";
-import Nav from "@/components/Nav";
-
 import UserDashboard from "@/components/UserDashboard";
 import AdminDashboard from "@/components/AdminDashboard";
 import GeoUpdater from "@/components/GeoUpdater";
@@ -50,7 +47,7 @@ export default async function Home() {
   };
 
   // ============================================
-  // 5. Normalize role and mobile
+  // 5. Normalize role
   // ============================================
 
   const role =
@@ -58,27 +55,8 @@ export default async function Home() {
       ? plainUser.role.trim().toLowerCase()
       : "user";
 
-  const mobile =
-    typeof plainUser.mobile === "string"
-      ? plainUser.mobile.trim()
-      : "";
-
   // ============================================
-  // 6. Mandatory mobile onboarding
-  // ============================================
-
-  if (!mobile) {
-    return (
-      <EditRoleMobile
-        initialRole={role}
-        initialMobile=""
-        userId={plainUser._id}
-      />
-    );
-  }
-
-  // ============================================
-  // 7. Render dashboard according to role
+  // 6. Render dashboard according to role
   // ============================================
 
   return (
