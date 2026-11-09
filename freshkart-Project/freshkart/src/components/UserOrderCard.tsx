@@ -58,38 +58,40 @@ function UserOrderCard({ order, onBuyAgain, onCancelOrder, onOrderUpdated }: Use
   const [deliveryBoyCompleted, setDeliveryBoyCompleted] = useState((order as any).deliveryBoyCompleted)
 
   // Status configuration mapping
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Delivered':
+  const getStatusBadge = (rawStatus: string) => {
+    const s = (rawStatus || '').trim().toLowerCase();
+    switch (s) {
+      case 'delivered':
         return {
           label: 'Delivered',
           bg: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
           icon: PackageCheck,
           dot: 'bg-emerald-500',
-        }
-      case 'Out For Delivery':
+        };
+      case 'out of delivery':
+      case 'out for delivery':
         return {
           label: 'Out For Delivery',
           bg: 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
           icon: Truck,
           dot: 'bg-amber-500 animate-pulse',
-        }
-      case 'Cancelled':
+        };
+      case 'cancelled':
         return {
           label: 'Cancelled',
           bg: 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800',
           icon: XCircle,
           dot: 'bg-rose-500',
-        }
+        };
       default:
         return {
           label: 'Processing',
           bg: 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
           icon: Clock,
           dot: 'bg-blue-500 animate-ping',
-        }
+        };
     }
-  }
+  };
 
   const statusConfig = getStatusBadge(order?.status || 'Processing')
   const StatusIcon = statusConfig.icon

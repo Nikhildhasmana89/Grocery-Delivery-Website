@@ -50,16 +50,22 @@ export default function CheckoutPage() {
     ) || [];
 
   const currentUser = useSelector(
-  (state: RootState) => (state as any).user?.user || (state as any).auth?.user
-);
+    (state: RootState) => state.user?.userData || (state as any).auth?.user
+  );
   const { data: session } = useSession();
 
-console.log("Redux User:", currentUser);
-console.log("Session User:", session?.user);
-
   // Form States
-  const [fullName, setFullName] = useState(currentUser?.name || "");
-  const [mobile, setMobile] = useState(currentUser?.mobile || "");
+  const [fullName, setFullName] = useState(currentUser?.name || (session?.user as any)?.name || "");
+  const [mobile, setMobile] = useState(currentUser?.mobile || (session?.user as any)?.mobile || "");
+
+  // Sync user details when session or Redux state resolves
+  React.useEffect(() => {
+    const userObj = currentUser || (session?.user as any);
+    if (userObj) {
+      if (!fullName && userObj.name) setFullName(userObj.name);
+      if (!mobile && userObj.mobile) setMobile(userObj.mobile);
+    }
+  }, [currentUser, session]);
   const [city, setCity] = useState("Delhi");
   const [stateName, setStateName] = useState("Delhi");
   const [pincode, setPincode] = useState("");
@@ -178,59 +184,83 @@ console.log("Session User:", session?.user);
   const grandTotal = subtotal + deliveryFee + tax;
 
   // Process Order API Integration (Supports Stripe & COD)
- const handlePlaceOrder = async () => {
-  if (isProcessingRef.current) {
-    return;
-  }
+  const handlePlaceOrder = async () => {
+    if (isProcessingRef.current) {
+      return;
+    }
 
-  setErrorMessage("");
+    setErrorMessage("");
 
-  if (!cartData.length) {
-    setErrorMessage("Your cart is empty!");
-    return;
-  }
+    if (!cartData.length) {
+      setErrorMessage("Your cart is empty!");
+      return;
+    }
 
-  isProcessingRef.current = true;
-  setIsSubmitting(true);
+    const trimmedMobile = mobile.trim();
+    if (!trimmedMobile || trimmedMobile.replace(/\D/g, "").length < 10) {
+      setErrorMessage("Please enter a valid 10-digit mobile number for order updates.");
+      return;
+    }
 
-    const formattedItems = cartData.map((item: any) => ({
-      grocery: item._id,
-      quantity: item.quantity || 1,
-      name: item.name,
-      price: String(item.price),
-      image: item.image || "",
-      unit: item.unit || "pcs",
+    const trimmedName = fullName.trim();
+    if (!trimmedName) {
+      setErrorMessage("Please enter your full name for delivery.");
+      return;
+    }
 
-    }));
+    const resolvedUserId = currentUser?._id || (session?.user as any)?.id;
+    if (!resolvedUserId) {
+      setErrorMessage("Please log in to complete your order.");
+      return;
+    }
+
+    isProcessingRef.current = true;
+    setIsSubmitting(true);
+
+    // Aggregate items by product ID so quantities reflect correctly in orders and inventory
+    const groupedMap = new Map<string, any>();
+    cartData.forEach((item: any) => {
+      const key = String(item._id || item.name);
+      if (groupedMap.has(key)) {
+        groupedMap.get(key).quantity += 1;
+      } else {
+        groupedMap.set(key, {
+          grocery: item._id,
+          quantity: item.quantity || 1,
+          name: item.name,
+          price: String(item.price),
+          image: item.image || "",
+          unit: item.unit || "pcs",
+        });
+      }
+    });
+    const formattedItems = Array.from(groupedMap.values());
 
     const fullAddressString = [houseNo, landmark, address].filter(Boolean).join(", ");
-    console.log("Redux User:", currentUser);
-console.log("Session User:", session?.user);
-console.log("Redux User ID:", currentUser?._id);
-console.log("Session User ID:", (session?.user as any)?.id);
 
-   const orderPayload = {
-  orderRequestId: orderRequestIdRef.current,
-
-  userId: currentUser?._id || (session?.user as any)?.id,
-  items: formattedItems,
-  totalAmount: String(grandTotal),
-  paymentMethod,
-  address: {
-    fullName: fullName || "Guest User",
-    mobile: mobile || "0000000000",
-    city: city || "Delhi",
-    state: stateName || "Delhi",
-    pincode: pincode || "000000",
-    fullAddress: fullAddressString,
-    latitude: position.lat,
-    longitude: position.lng,
-  },
-  status: "pending",
-};
+    const orderPayload = {
+      orderRequestId: orderRequestIdRef.current,
+      userId: resolvedUserId,
+      items: formattedItems,
+      totalAmount: String(grandTotal),
+      paymentMethod,
+      address: {
+        fullName: trimmedName,
+        mobile: trimmedMobile,
+        city: city || "Delhi",
+        state: stateName || "Delhi",
+        pincode: pincode || "000000",
+        fullAddress: fullAddressString || "Address provided via map",
+        latitude: position.lat,
+        longitude: position.lng,
+      },
+      status: "pending",
+    };
 
     try {
-      const res = await fetch("/api/user/payment", {
+      // Use dedicated order creation API for COD (handles stock & sockets) and payment API for Stripe
+      const targetEndpoint = paymentMethod === "cod" ? "/api/user/order" : "/api/user/payment";
+      const res = await fetch(targetEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderPayload),
@@ -256,7 +286,7 @@ console.log("Session User ID:", (session?.user as any)?.id);
       setErrorMessage("Something went wrong while connecting to the server.");
     } finally {
       isProcessingRef.current = false;
-  setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 

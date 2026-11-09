@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Send,
   Phone,
@@ -12,18 +12,9 @@ import {
   MessageSquare,
   Sparkles,
 } from "lucide-react";
-import { connectSocket, getSocket } from "@/lib/socket";
+import { useOrderChat, IMessageItem } from "@/hooks/useOrderChat";
 
-export interface IMessageItem {
-  _id: string;
-  chatRoomId: string;
-  userId: string;
-  deliveryBoyId?: string;
-  orderId?: string;
-  sender: "user" | "assistant" | "deliveryBoy";
-  content: string;
-  createdAt: string;
-}
+export type { IMessageItem };
 
 interface DeliveryChatProps {
   orderId: string;
@@ -38,260 +29,117 @@ export default function DeliveryChat({
   customerName,
   customerPhone,
 }: DeliveryChatProps) {
-  const [chatRoomId, setChatRoomId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<IMessageItem[]>([]);
   const [messageText, setMessageText] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const {
+    messages,
+    loading,
+    sending,
+    error,
+    sendMessage,
+    messagesEndRef,
+    scrollToBottom,
+  } = useOrderChat({
+    orderId,
+    currentUserId: deliveryBoyId,
+    senderRole: "deliveryBoy",
+  });
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  // Create or resolve existing chat room for this order
-  const initChatRoom = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch("/api/chat/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success || !data.chatRoom?._id) {
-        throw new Error(data.message || "Failed to initialize order chat room");
-      }
-
-      const roomId = String(data.chatRoom._id);
-      setChatRoomId(roomId);
-      return roomId;
-    } catch (err: any) {
-      console.error("❌ Init chat room error:", err);
-      setError(err.message || "Unable to start order chat");
-      return null;
-    }
-  }, [orderId]);
-
-  // Load message history for room
-  const loadMessages = useCallback(async (roomId: string) => {
-    try {
-      const response = await fetch(`/api/chat/messages?chatRoomId=${encodeURIComponent(roomId)}`);
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        setMessages(data.data || []);
-      }
-    } catch (err) {
-      console.error("❌ Load messages error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Initial setup
-  useEffect(() => {
-    let isMounted = true;
-
-    const setup = async () => {
-      const roomId = await initChatRoom();
-      if (roomId && isMounted) {
-        await loadMessages(roomId);
-      } else if (isMounted) {
-        setLoading(false);
-      }
-    };
-
-    setup();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [initChatRoom, loadMessages]);
-
-  // Real-time Socket.IO Listeners
-  useEffect(() => {
-    if (!chatRoomId || !deliveryBoyId) return;
-
-    const socket = connectSocket(deliveryBoyId);
-
-    // Join the order's chat room
-    socket.emit("join-room", chatRoomId);
-
-    const handleNewMessage = (incomingMsg: any) => {
-      if (!incomingMsg || !incomingMsg._id) return;
-      if (String(incomingMsg.chatRoomId) !== String(chatRoomId)) return;
-
-      setMessages((prev) => {
-        // Prevent duplicates
-        if (prev.some((m) => String(m._id) === String(incomingMsg._id))) {
-          return prev;
-        }
-        return [...prev, incomingMsg];
-      });
-    };
-
-    socket.on("new-message", handleNewMessage);
-
-    return () => {
-      socket.off("new-message", handleNewMessage);
-      socket.emit("leave-room", chatRoomId);
-    };
-  }, [chatRoomId, deliveryBoyId]);
-
-  // Auto-scroll when messages change
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, scrollToBottom]);
 
-  // Send message
-  const sendMessage = async () => {
-    const trimmed = messageText.trim();
-    if (!trimmed || !chatRoomId || sending) return;
-
-    try {
-      setSending(true);
-      setError(null);
-
-      const response = await fetch("/api/chat/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatRoomId,
-          content: trimmed,
-          sender: "deliveryBoy",
-          orderId,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || "Failed to send message");
-      }
-
-      if (data.data && data.data._id) {
-        setMessages((prev) => {
-          if (prev.some((m) => String(m._id) === String(data.data._id))) {
-            return prev;
-          }
-          return [...prev, data.data];
-        });
-      }
-
+  const handleSend = async () => {
+    const success = await sendMessage(messageText);
+    if (success) {
       setMessageText("");
-    } catch (err: any) {
-      console.error("❌ Send message error:", err);
-      setError(err.message || "Failed to send message");
-    } finally {
-      setSending(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSend();
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-[450px] items-center justify-center rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center gap-3 text-slate-500 text-sm font-semibold">
-          <Loader2 className="animate-spin text-emerald-600" size={20} />
-          Connecting to customer chat...
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex h-[520px] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm font-sans">
+    <div className="w-full overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-950 font-sans">
       {/* HEADER */}
-      <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-5 py-3.5">
+      <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-950">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
             <User size={19} />
           </div>
+
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-bold text-slate-900 text-sm">{customerName}</h3>
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                <Sparkles size={10} className="text-emerald-500" /> Customer
+            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              Chat with Customer ({customerName})
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                <Sparkles className="w-2.5 h-2.5" /> Active Order
               </span>
-            </div>
-            <p className="text-[11px] font-medium text-slate-400">Order Chat Channel</p>
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Order #{orderId.slice(-6).toUpperCase()}
+            </p>
           </div>
         </div>
 
         {customerPhone && (
           <a
             href={`tel:${customerPhone}`}
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
-            title="Call Customer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 border border-emerald-200/60 dark:border-emerald-800 text-xs font-semibold transition-all shadow-sm"
           >
-            <Phone size={16} />
+            <Phone size={13} />
+            <span className="hidden sm:inline">Call Customer</span>
           </a>
         )}
       </div>
 
-      {/* ERROR BANNER */}
-      {error && (
-        <div className="bg-red-50 border-b border-red-100 px-4 py-2 text-xs text-red-600 flex items-center gap-2">
-          <AlertCircle size={14} className="shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* MESSAGES FEED */}
-      <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/50 p-4">
-        {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-center p-6 space-y-2">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600">
-              <MessageSquare size={22} />
+      {/* CHAT MESSAGES BODY */}
+      <div className="flex h-80 flex-col overflow-y-auto p-4 space-y-3 bg-slate-50/50 dark:bg-slate-900/40 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-800">
+        {loading ? (
+          <div className="flex flex-1 items-center justify-center gap-2 text-xs text-slate-400">
+            <Loader2 size={16} className="animate-spin text-emerald-500" />
+            <span>Loading message thread...</span>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center text-center p-6 text-slate-400 space-y-2">
+            <div className="p-3 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
+              <MessageSquare size={20} />
             </div>
-            <h4 className="font-bold text-slate-800 text-sm">Direct Customer Chat</h4>
-            <p className="max-w-xs text-xs text-slate-500 leading-relaxed">
-              Send a message to update the customer regarding their grocery delivery.
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              No messages yet
+            </p>
+            <p className="text-[11px] max-w-xs text-slate-500">
+              Send a message to update the customer on arrival times, entrance access, or delivery status.
             </p>
           </div>
         ) : (
-          messages.map((item) => {
-            const isDeliveryBoy = item.sender === "deliveryBoy";
-
+          messages.map((msg) => {
+            const isMe = msg.sender === "deliveryBoy";
             return (
               <div
-                key={item._id}
-                className={`flex ${isDeliveryBoy ? "justify-end" : "justify-start"}`}
+                key={msg._id}
+                className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-xs ${
-                    isDeliveryBoy
-                      ? "rounded-br-xs bg-emerald-600 text-white shadow-sm"
-                      : "rounded-bl-xs bg-white text-slate-900 border border-slate-200/80 shadow-xs"
+                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-sm ${
+                    isMe
+                      ? "bg-emerald-600 text-white rounded-br-xs font-medium"
+                      : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-xs"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap leading-relaxed">{item.content}</p>
-                  <p
-                    className={`mt-1 text-[9px] font-medium text-right ${
-                      isDeliveryBoy ? "text-emerald-100" : "text-slate-400"
-                    }`}
-                  >
-                    {item.createdAt
-                      ? new Date(item.createdAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "Just now"}
-                  </p>
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
                 </div>
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 px-1 mt-1">
+                  {msg.createdAt
+                    ? new Date(msg.createdAt).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "Just now"}
+                </span>
               </div>
             );
           })
@@ -300,26 +148,41 @@ export default function DeliveryChat({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* ERROR ALERT */}
+      {error && (
+        <div className="px-4 py-2 bg-red-50 dark:bg-red-950/40 border-t border-red-200 dark:border-red-900/50 flex items-center justify-between text-xs text-red-600 dark:text-red-400">
+          <div className="flex items-center gap-1.5">
+            <AlertCircle size={14} />
+            <span>{error}</span>
+          </div>
+        </div>
+      )}
+
       {/* INPUT BAR */}
-      <div className="border-t border-slate-100 bg-white p-3">
+      <div className="border-t border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
         <div className="flex items-center gap-2">
           <input
             type="text"
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message to customer..."
-            disabled={!chatRoomId || sending}
-            className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-xs outline-none transition focus:border-emerald-500 focus:bg-white disabled:bg-slate-100"
+            placeholder="Type your message to customer..."
+            disabled={loading || sending}
+            className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-emerald-500 dark:focus:bg-slate-950 disabled:opacity-50"
           />
 
           <button
-            onClick={sendMessage}
-            disabled={!messageText.trim() || !chatRoomId || sending}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed shrink-0"
-            aria-label="Send message"
+            type="button"
+            onClick={handleSend}
+            disabled={!messageText.trim() || loading || sending}
+            className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-md shadow-emerald-500/20 hover:opacity-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+            aria-label="Send Message"
           >
-            {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            {sending ? (
+              <Loader2 size={16} className="animate-spin text-white" />
+            ) : (
+              <Send size={15} className="stroke-[2.5]" />
+            )}
           </button>
         </div>
       </div>

@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
             product_data: {
               name: "Order Payment",
             },
-            unit_amount: totalAmount * 100,
+            unit_amount: Math.round(Number(totalAmount) * 100),
           },
           quantity: 1,
         },

@@ -54,7 +54,7 @@ export default function AIAssistantWidget() {
       id: "welcome",
       sender: "ai",
       text: "Hello! 👋 I'm **FreshBot**, your personal AI Grocery & Support Assistant. Ask me for recipe ideas, budget shopping lists, product recommendations, or order help!",
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      timestamp: "Just now",
     },
   ]);
   const [inputMessage, setInputMessage] = useState("");

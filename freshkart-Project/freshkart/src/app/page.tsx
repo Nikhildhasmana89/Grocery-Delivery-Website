@@ -61,7 +61,9 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen bg-[#07090E] text-white">
-      <GeoUpdater userId={plainUser._id} />
+      {(role === "deliveryboy" || role === "delivery_boy") && (
+        <GeoUpdater userId={plainUser._id} />
+      )}
 
       {role === "admin" ? (
         <AdminDashboard user={plainUser} />
